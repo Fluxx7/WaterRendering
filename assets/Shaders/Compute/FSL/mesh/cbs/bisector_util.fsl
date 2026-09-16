@@ -1,0 +1,110 @@
+#include "cbtree_defs.fsl"
+#include "bisector_defs.fsl"
+
+kernel[16, 16, 1] initBuffers(_g_id : GlobalInvocationID, f32 sizeX, f32 sizeY, i32 edges_per_side) {
+	
+	i32x3 g_id = i32x3(_g_id);
+	if (g_id.x >= edges_per_side || g_id.y >= edges_per_side) return;
+	i32 max_id = edges_per_side - 1;
+	
+	i32 face = g_id.x + g_id.y * edges_per_side;
+	i32 verts_per_row = edges_per_side + 1;
+	
+	// order: [top-left top-right bottom-right bottom-left]
+	i32[4] verts;
+	// order: [top right bottom left]
+	i32[4] edges;
+	i32[4] twins;
+	
+	i32 first_vert = g_id.x + g_id.y * verts_per_row;	
+	verts[0] = first_vert;
+	verts[1] = 1 + first_vert;
+	verts[2] = 1 + first_vert + verts_per_row;	
+	verts[3] = first_vert + verts_per_row;	
+	
+	i32 first_edge = g_id.x + g_id.y * (2 * verts_per_row);
+	edges[0] = first_edge;
+	edges[1] = first_edge + edges_per_side + 1;
+	edges[2] = g_id.x + (g_id.y + 1) * (2 * verts_per_row);
+	edges[3] = first_edge + edges_per_side;
+	
+	twins[0] = g_id.y > 0 ? (4 * (face - edges_per_side) + 2) : -1;
+	twins[1] = g_id.x < max_id ? (4 * (face + 1) + 3) : -1;
+	twins[2] = g_id.y < max_id ? (4 * (face + edges_per_side)) : -1;
+	twins[3] = g_id.x > 0 ? (4 * (face - 1) + 1) : -1;
+	
+	i32 start_id = 4 * face;
+	for (i32 i = 0; i < 4; i++) {
+		i32 curr_id = start_id + i;	
+		HalfEdge curr_he;
+		curr_he.face = face;
+		curr_he.edge = edges[i];
+		curr_he.vert = verts[i];
+		curr_he.twin = twins[i];
+		curr_he.next = i == 3 ? start_id : curr_id + 1;
+		curr_he.prev = i == 0 ? start_id + 3 : curr_id - 1;
+		half_edges[curr_id] = curr_he;
+	}
+    
+    const f32x2 size = f32x2(sizeX, sizeY);
+	const f32x2 step = size / f32(verts_per_row - 1);
+	
+	const f32 half_size = f32(verts_per_row - 1) * 0.5;
+    
+    f32x3 v0 = f32x3((f32(_g_id.x) - half_size) * step.y, 0.0, (f32(_g_id.y) - half_size) * step.x);
+    f32x3 v1 = f32x3((f32(_g_id.x + 1) - half_size) * step.y, 0.0, (f32(_g_id.y) - half_size) * step.x);
+    f32x3 v2 = f32x3((f32(_g_id.x + 1) - half_size) * step.y, 0.0, (f32(_g_id.y + 1) - half_size) * step.x);
+    f32x3 v3 = f32x3((f32(_g_id.x) - half_size) * step.y, 0.0, (f32(_g_id.y + 1) - half_size) * step.x);
+    
+    vertex_buffer.data[verts[0]] = f32x3_to_vertex(v0);
+    
+    if (g_id.x == max_id) {
+		vertex_buffer.data[verts[1]] = f32x3_to_vertex(v1);
+	}
+	if (g_id.y == max_id) {
+		vertex_buffer.data[verts[3]] = f32x3_to_vertex(v3);
+	}
+    if (g_id == i32x3(max_id, max_id, 0)) {
+		vertex_buffer.data[verts[2]] = f32x3_to_vertex(v2);
+	}
+	vertex_buffer.data[cbt_capacity + face] = f32x3_to_vertex((v0 + v1 + v2 + v3) / 4.0);
+	if (_g_id == u32x3(0, 0, 0)) {
+		num_half_edges = 4 * edges_per_side * edges_per_side;
+		id_offset = 1 << u32(ceil(log2(f32(num_half_edges))));
+		id_depth_offset = findMSB(id_offset);
+		indirect_dispatch.d0.x = (num_half_edges + 31u) / 32u;
+		indirect_dispatch.d0.y = 1;
+		indirect_dispatch.d0.z = 1;
+	}
+}
+
+kernel[32, 1, 1] makeRootBisectors(g_id : GlobalInvocationID) {
+	if (g_id.x >= num_half_edges) return;
+	HalfEdge he = half_edges[g_id.x];
+	
+	Bisector bis;
+	bis.state = STATE_UNCHANGED;
+	bis.flags = 0;
+	bis.subdiv_pattern = 0;
+	bis.problematic_neighbor = -1;
+	bis.root_index = i32(g_id.x);
+	bis.mem_slots = i32x3(-1, -1, -1);
+	
+	Neighbors n;
+	n.next = he.next;
+	n.prev = he.prev;
+	n.twin = he.twin;
+	
+	u32 v0_index = he.vert;
+	u32 v1_index = half_edges[he.next].vert;
+	u32 v2_index = cbt_capacity + he.face;
+	
+	bisector_indices[g_id.x] = i32x4(v0_index, v1_index, v2_index, -1);
+	bisectors[g_id.x] = bis;
+	neighbors[g_id.x] = n;
+	bisector_ids[g_id.x] = i64(g_id.x + id_offset);
+	
+	
+	atomicAdd(available_memory, -1);
+	set_leaf(g_id.x, 1);
+}

@@ -45,10 +45,10 @@ kernel[16, 16, 1] genSubdivMesh(g_id : GlobalInvocationID, f32 sizeX, f32 sizeY,
 
 	if (col == 0 && row == 0) {
 		const u32 index_count = indices_per_side * indices_per_side * 6;
-		draw_command_buffer.index_count = index_count;
-		draw_command_buffer.instance_count = 1;
-		draw_command_buffer.first_index = 0;
-		draw_command_buffer.vertex_offset = 0;
-		draw_command_buffer.first_instance = 0;	
+		indexed_draw_command_buffer.index_count = index_count;
+		indexed_draw_command_buffer.instance_count = 1;
+		indexed_draw_command_buffer.first_index = 0;
+		indexed_draw_command_buffer.vertex_offset = 0;
+		indexed_draw_command_buffer.first_instance = 0;	
 	}
 }

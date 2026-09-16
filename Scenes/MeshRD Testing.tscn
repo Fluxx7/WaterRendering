@@ -1,14 +1,15 @@
 [gd_scene format=3 uid="uid://farsdj6y0ymp"]
 
-[ext_resource type="Script" uid="uid://dq12etyqk5vv6" path="res://assets/Scripts/Utility/MeshTest.cs" id="1_dmo6u"]
 [ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="1_hrjth"]
-[ext_resource type="Shader" uid="uid://qif3o50i1xb7" path="res://Scenes/test_mesh.gdshader" id="2_75ssb"]
+[ext_resource type="Script" uid="uid://btptuvdnd2xtk" path="res://assets/Scripts/Utility/CBTTestMesh.cs" id="2_hrjth"]
+[ext_resource type="Shader" uid="uid://qif3o50i1xb7" path="res://Scenes/test_mesh.gdshader" id="3_hrjth"]
 
-[sub_resource type="BoxMesh" id="BoxMesh_gd4i4"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_dmo6u"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_k102q"]
 render_priority = 0
-shader = ExtResource("2_75ssb")
+shader = ExtResource("3_hrjth")
+shader_parameter/display_mode = 1
+shader_parameter/color_saturation = 0.6
+shader_parameter/color_value = 0.9
 
 [sub_resource type="PhysicalSkyMaterial" id="PhysicalSkyMaterial_ebsym"]
 
@@ -22,21 +23,55 @@ sky = SubResource("Sky_xaprp")
 [node name="MeshRdTesting" type="Node3D" unique_id=2128543491]
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=2026046529]
-transform = Transform3D(1, 0, 0, 0, 0.9930255, 0.117900096, 0, -0.117900096, 0.9930255, 0, 2.549985, 3.728664)
+transform = Transform3D(1, 0, 0, 0, 0.681005, 0.7322787, 0, -0.7322787, 0.681005, 0, 40.582985, 34.800446)
 current = true
 script = ExtResource("1_hrjth")
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1922098319]
-mesh = SubResource("BoxMesh_gd4i4")
-script = ExtResource("1_dmo6u")
-Subdivisions = 1024
-Size = Vector2(100, 100)
-Material = SubResource("ShaderMaterial_dmo6u")
-CBTBaseMeshDivisions = 32
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=996728850]
 transform = Transform3D(1, 0, 0, 0, 0.2586681, 0.9659663, 0, -0.9659663, 0.2586681, 0, 2.948106, 0)
 light_color = Color(1.353, 1.345, 1.233, 1)
+
+[node name="DynamicMeshInstance3D" type="GeometryInstance3D" parent="." unique_id=1063955434]
+unique_name_in_owner = false
+process_mode = 0
+process_priority = 0
+process_physics_priority = 0
+process_thread_group = 0
+physics_interpolation_mode = 0
+auto_translate_mode = 0
+editor_description = ""
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+rotation_edit_mode = 0
+rotation_order = 2
+top_level = false
+visible = true
+visibility_parent = NodePath("")
+layers = 1
+sorting_offset = 0.0
+sorting_use_aabb_center = true
+material_override = null
+material_overlay = null
+transparency = 0.0
+cast_shadow = 1
+extra_cull_margin = 0.0
+custom_aabb = AABB(0, 0, 0, 0, 0, 0)
+lod_bias = 1.0
+ignore_occlusion_culling = false
+gi_mode = 1
+gi_lightmap_texel_scale = 1.0
+visibility_range_begin = 0.0
+visibility_range_begin_margin = 0.0
+visibility_range_end = 0.0
+visibility_range_end_margin = 0.0
+visibility_range_fade_mode = 0
+script = ExtResource("2_hrjth")
+ToggleKey = 70
+PauseKey = 80
+Size = Vector2(22584608, 22584608)
+MaxDepth = 21
+BaseSubdivisions = 4
+SurfaceMaterial = SubResource("ShaderMaterial_k102q")
+metadata/_custom_type_script = "uid://dflvs4xa2855f"
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1814401543]
 environment = SubResource("Environment_hrjth")

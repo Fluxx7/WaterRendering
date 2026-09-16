@@ -1,0 +1,10 @@
+#include "cbs/cbtree_defs.fsl"
+#include "cbs/cbtrees_util.fsl"
+#include "cbs/update_cbtree.fsl"
+#include "cbs/bisector_util.fsl"
+#include "cbs/update_bisectors.fsl"
+
+/*
+ This file collects all of the kernels into a single file so that ComputeGroup can share resources between
+ all of them automatically. It doesn't need to contain its own code
+ */

@@ -1,0 +1,58 @@
+#include "bisector_defs.fsl"
+
+#define SPLIT_THRESHOLD 24
+#define MERGE_THRESHOLD 14
+
+layout(std430) buffer CameraBuffer {
+	f32x3 camera_pos;
+	f32 proj_scale;
+} cam;
+
+
+kernel[1, 1, 1] updateCamera(f32 cam_x, f32 cam_y, f32 cam_z, f32 proj_scale) {
+	cam.camera_pos = f32x3(cam_x, cam_y, cam_z);
+	cam.proj_scale = proj_scale;
+}
+
+i8 command_select(i32 b_index) {
+	i32 b_depth = load_depth(b_index);
+	f32x3x3 verts = bisector_vertices(b_index);
+	f32 edge = distance(verts[1], verts[0]);
+    f32 dist = max(distance((verts[0]+verts[1]+verts[2]) / 3.0, cam.camera_pos), 0.001);
+    f32 projected = edge * cam.proj_scale / dist; 
+
+	if ((projected > SPLIT_THRESHOLD) && (b_depth < (MAX_DEPTH_BIT - id_depth_offset))) {
+		return i8(1);	
+	} else if (projected < MERGE_THRESHOLD && b_depth > 0) {
+		return i8(-1);	
+	}
+	return i8(0);
+}
+
+
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] classify(g_id : GlobalInvocationID) {
+	if (g_id.x >= num_bisectors) return;
+	i32 b_index = get_nth_high_bit(g_id.x);
+	i8 command = command_select(b_index);
+	Bisector bisector = bisectors[b_index];
+	bisector.subdiv_pattern = 0;
+	bisector.problematic_neighbor = -1;
+	bisector.flags = FLAG_NONE;
+	bisector.state = STATE_UNCHANGED;
+	bisector.mem_slots = i32x3(-1, -1, -1);
+	if (command == 1) {
+		bisector.state = STATE_BISECT;
+		u32 slot = atomicAdd(splitBisectors.count, 1);
+		atomicAdd(indirect_dispatch.d1.x, update_dispatch_count(slot));
+		splitBisectors.indices[slot] = b_index;
+	} else if (command == -1) {
+		bisector.state = STATE_SIMPLIFY;
+		if ((bisector_ids[b_index] & 1) == 0) {
+			u32 slot = atomicAdd(mergeBisectors.count, 1);
+			atomicAdd(indirect_dispatch.d6.x, update_dispatch_count(slot));
+			mergeBisectors.indices[slot] = b_index;
+		}
+	} 
+	bisectors[b_index] = bisector;
+}

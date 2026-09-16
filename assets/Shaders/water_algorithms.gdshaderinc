@@ -43,12 +43,6 @@ float dotpos(vec3 a, vec3 b) {
 	return max(dot(a,b), 0.0); 
 }
 
-vec3 foam(in vec3 light, in vec3 light_color, in vec3 view) {
-	vec3 halfway = normalize(light + view);
-	float fresnel = schlick_fresnel(dot(halfway, light), REFLECTANCE);
-	return vec3(1.0) * (1.0 - fresnel) * light_color;
-}
-
 void brdf_lighting(in vec3 light, in vec3 light_color, in vec3 view, in mat4 view_matrix, in vec3 mesonormal, in vec2 slopes, in float wave_height, inout vec3 specular, inout vec3 diffuse){
 	vec3 halfway = normalize(light + view);
 	vec3 macronormal = normalize(view_matrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
@@ -77,7 +71,7 @@ void brdf_lighting(in vec3 light, in vec3 light_color, in vec3 view, in mat4 vie
 	
 	float light_reflection_scatter = NdotV * NdotV  * k2;
 	
-	vec3 diffuse_out = fma(height_scale * height, height_dot_pow4 * height_term2_pow3, light_reflection_scatter) * water_scatter_color.rgb * light_color / (1.0 + light_mask);
+	vec3 diffuse_out = fma(height_scale * height, height_dot_pow4 * height_term2_pow3, light_reflection_scatter) * water_scatter_color.rgb / (1.0 + light_mask);
 	diffuse_out += (k3 * max(NdotLun, 0.0) * water_scatter_color.rgb) + k4 * air_bubble_color.rgb * air_bubble_density;
 	diffuse_out *= (1.0 - fresnel) * light_color;
 	diffuse += diffuse_out;

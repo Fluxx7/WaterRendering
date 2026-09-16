@@ -150,6 +150,7 @@ public partial class OptimFftHandler : RefCounted {
 			{"texSize", texSize},
 			{"deltaTime", delta}
 		};
+		fftPlan.AddBarrier();
 		
 		foreach (ComputeGroup fft in ffts) {
 			fftPlan.AddKernelWorkgroups(fft.GetKernel("ifftRow"), 1, texSize, numCascades);

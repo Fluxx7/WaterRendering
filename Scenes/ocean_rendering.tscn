@@ -1,15 +1,15 @@
 [gd_scene format=3 uid="uid://cpwjm2lbw38ds"]
 
 [ext_resource type="Script" uid="uid://cky6u0t1f7a7w" path="res://assets/Scripts/Utility/FPSLabel.cs" id="1_jpx6j"]
+[ext_resource type="Script" uid="uid://ddumaw17bksl1" path="res://assets/Scripts/Water/SpectrumWater.cs" id="3_3df1w"]
 [ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="4_62ipq"]
-[ext_resource type="Script" uid="uid://ddumaw17bksl1" path="res://assets/Scripts/Water/FastTextureWater.cs" id="6_epyer"]
 [ext_resource type="Script" uid="uid://pcg032ja3p6u" path="res://assets/Scripts/Water/FastWaterController.cs" id="8_6y65k"]
 
 [sub_resource type="PhysicalSkyMaterial" id="PhysicalSkyMaterial_ebsym"]
 rayleigh_color = Color(0.145, 0.29724994, 0.58, 1)
 mie_color = Color(0.6561, 0.70483506, 0.81, 1)
 turbidity = 17.04
-ground_color = Color(0.0025649238, 0.09073507, 0.11476492, 1)
+ground_color = Color(0.06666667, 0.12156863, 0.25882354, 1)
 energy_multiplier = 5.55
 
 [sub_resource type="Sky" id="Sky_xaprp"]
@@ -19,9 +19,15 @@ sky_material = SubResource("PhysicalSkyMaterial_ebsym")
 background_mode = 2
 background_energy_multiplier = 2.71
 sky = SubResource("Sky_xaprp")
-fog_light_color = Color(0.31395203, 0.58077645, 0.7567282, 1)
-fog_sky_affect = 0.186
-fog_height_density = 2.8718
+fog_enabled = true
+fog_mode = 1
+fog_light_color = Color(0.30980393, 0.59607846, 0.7882353, 1)
+fog_sun_scatter = 0.08
+fog_density = 1.0
+fog_sky_affect = 0.0
+fog_depth_curve = 8.574179
+fog_depth_begin = 179.5
+fog_depth_end = 4000.0
 
 [node name="Node3D" type="Node3D" unique_id=1407384273]
 
@@ -85,42 +91,9 @@ content_scale_mode = 2
 content_scale_aspect = 4
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=322091660]
-transform = Transform3D(-0.9238795, 0.091282815, -0.37163705, 0, 0.9711343, 0.23853347, 0.3826835, 0.22037618, -0.8972111, -50, 11.53, -100)
+transform = Transform3D(0.9457371, -0.077507325, 0.31555325, -6.8834387e-09, 0.9711343, 0.23853347, -0.3249327, -0.22558996, 0.9184377, -50, 11.53, -100)
 current = true
 script = ExtResource("4_62ipq")
-
-[node name="Water" type="MeshInstance3D" parent="." unique_id=1393861654 node_paths=PackedStringArray("Camera", "debugWindow", "debugWindowToggle", "visualsWindow", "visualsWindowToggle")]
-script = ExtResource("6_epyer")
-Subdivide = 1024
-Size = Vector2(200, 200)
-Camera = NodePath("../Camera3D")
-debugWindow = NodePath("../Debug Controls")
-debugWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Debug View")
-visualsWindow = NodePath("../Visual Controls")
-visualsWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
-ScatterColor = Color(0, 0.4, 0.2, 1)
-BubbleColor = Color(0.047058824, 0.101960786, 0.1882353, 1)
-WaterColor = Color(0.039215688, 0.101960786, 0.21568628, 1)
-HeightScale = 3.14
-K2 = 0.86
-K3 = 0.95
-K4 = 2.0
-BubbleDensity = 2.61
-CBTBaseMeshDivisions = 32
-
-[node name="WaterController" type="Node" parent="Water" unique_id=1829685482 node_paths=PackedStringArray("controlWindow", "controlWindowToggle")]
-script = ExtResource("8_6y65k")
-_depth = 200.0
-_windSpeed = 16.94
-_windDirection = 40.0
-_fetch = 250000.0
-tessendorfAttenuation = 0.08
-_spreadingStrength = 1.0
-_swell = 0.0
-controlWindow = NodePath("../../Water Controls")
-controlWindowToggle = NodePath("../../CanvasLayer/VBoxContainer/Water Controls")
-numCascades = 4
-TileLengths = Array[float]([2048.0, 370.0, 80.0, 17.0])
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=352627126]
 environment = SubResource("Environment_3df1w")
@@ -129,3 +102,59 @@ environment = SubResource("Environment_3df1w")
 transform = Transform3D(1, 0, 0, 0, -0.99026805, 0.13917318, 0, -0.13917318, -0.99026805, 0, 13.747661, 0)
 light_color = Color(1, 0.98483336, 0.93, 1)
 light_energy = 4.043
+
+[node name="Ocean" type="GeometryInstance3D" parent="." unique_id=464920326 node_paths=PackedStringArray("Camera", "debugWindow", "debugWindowToggle", "visualsWindow", "visualsWindowToggle")]
+unique_name_in_owner = false
+process_mode = 0
+process_priority = 0
+process_physics_priority = 0
+process_thread_group = 0
+physics_interpolation_mode = 0
+auto_translate_mode = 0
+editor_description = ""
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+rotation_edit_mode = 0
+rotation_order = 2
+top_level = false
+visible = true
+visibility_parent = NodePath("")
+layers = 1
+sorting_offset = 0.0
+sorting_use_aabb_center = true
+material_override = null
+material_overlay = null
+transparency = 0.0
+cast_shadow = 1
+extra_cull_margin = 0.0
+custom_aabb = AABB(0, 0, 0, 0, 0, 0)
+lod_bias = 1.0
+ignore_occlusion_culling = false
+gi_mode = 1
+gi_lightmap_texel_scale = 1.0
+visibility_range_begin = 0.0
+visibility_range_begin_margin = 0.0
+visibility_range_end = 0.0
+visibility_range_end_margin = 0.0
+visibility_range_fade_mode = 0
+script = ExtResource("3_3df1w")
+Camera = NodePath("../Camera3D")
+debugWindow = NodePath("../Debug Controls")
+debugWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Debug View")
+visualsWindow = NodePath("../Visual Controls")
+visualsWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
+Size = Vector2(22584608, 22584608)
+MaxDepth = 19
+BaseSubdivisions = 4
+metadata/_custom_type_script = "uid://dflvs4xa2855f"
+
+[node name="WaterController" type="Node" parent="Ocean" unique_id=426106023 node_paths=PackedStringArray("controlWindow", "controlWindowToggle")]
+script = ExtResource("8_6y65k")
+_depth = 150.0
+_windSpeed = 11.0
+_windDirection = -75.0
+_fetch = 250000.0
+_spreadingStrength = 1.0
+_swell = 0.25
+controlWindow = NodePath("../../Water Controls")
+controlWindowToggle = NodePath("../../CanvasLayer/VBoxContainer/Water Controls")
+NumCascades = 4

@@ -1,9 +1,5 @@
 #include "shared_resources.fsl"
 
-f32 gamma_function() {
-	return 0.0;
-}
-
 f32 get_kmag(i32x2 id, i32 cascade_index, i32 texSize, f32 tile_length) {
 	return length(2.0 * PI * (id - texSize * 0.5) / tile_length);
 }
@@ -27,7 +23,12 @@ kernel[32, 32, 1] tessendorfSpectrum(g_id : GlobalInvocationID, f32 A) {
 	const f32 tile_length = paramsBuffer.cascadeParams[cascade_index].x;
 
 	f32 k = get_kmag(id, cascade_index, texSize, tile_length);
-	imageStore(spectrumMap, i32x3(id, cascade_index), f32x4(tessendorf_spectrum(A, k, paramsBuffer.windSpeed), 0.0, 0.0, 1.0));
+	f32 tessendorfResults = tessendorf_spectrum(A, k, paramsBuffer.windSpeed);
+	imageStore(spectrumMap, i32x3(id, cascade_index), f32x4(tessendorfResults, 0.0, 0.0, 1.0));
+	if (g_id == u32x3(0,0,0)) {
+		f32 k_peak = g / (1.41421356 * paramsBuffer.windSpeed * paramsBuffer.windSpeed);
+		spectrumData.omega_peak = dispersion_relation(k_peak, paramsBuffer.depth);
+	}
 }
 
 kernel[32, 32, 1] attenuatedTessendorfSpectrum(g_id : GlobalInvocationID, f32 A, f32 l) {
@@ -40,8 +41,13 @@ kernel[32, 32, 1] attenuatedTessendorfSpectrum(g_id : GlobalInvocationID, f32 A,
 	const f32 tile_length = paramsBuffer.cascadeParams[cascade_index].x;
 
 	f32 k = get_kmag(id, cascade_index, texSize, tile_length);
+	f32 tessendorfResults = tessendorf_spectrum(A, k, paramsBuffer.windSpeed);
 	f32 attenuation = exp(-(k * k) * (l * l));
-	imageStore(spectrumMap, i32x3(id, cascade_index), f32x4(tessendorf_spectrum(A, k, paramsBuffer.windSpeed) * attenuation, 0.0, 0.0, 1.0));
+	imageStore(spectrumMap, i32x3(id, cascade_index), f32x4(tessendorfResults * attenuation, 0.0, 0.0, 1.0));
+	if (g_id == u32x3(0,0,0)) {
+		f32 k_peak = g / (1.41421356 * paramsBuffer.windSpeed * paramsBuffer.windSpeed);
+		spectrumData.omega_peak = dispersion_relation(k_peak, paramsBuffer.depth);
+	}
 }
 
 f32 dphi_dk(f32 k_mag, f32 omega, f32 depth, f32 tan_k) {
@@ -61,13 +67,13 @@ f32 a_b_spectrum(f32 omega, f32 A, f32 B) {
     }
     f32 first_term = A * pow(omegaRcp, 5.0);
     f32 second_term = exp(-B * pow(omegaRcp, 4.0));
-   
+   	
     return first_term * second_term;
 }
 
 kernel[32, 32, 1] abSpectrum(g_id : GlobalInvocationID, f32 A, f32 B) {
 	if (g_id.x >= N) return;
-	if (g_id.y >= N) return;
+	if (g_id.y >= N) return; 
 	if (g_id.z >= paramsBuffer.numCascades) return;
 	
 	const i32 texSize = i32(N);
@@ -78,7 +84,11 @@ kernel[32, 32, 1] abSpectrum(g_id : GlobalInvocationID, f32 A, f32 B) {
 	f32 k_mag = get_kmag(id, cascade_index, texSize, tile_length);
 	f32 tan_k = 0.0;
 	f32 omega = dispersion_relation(k_mag, paramsBuffer.depth, tan_k);
-	imageStore(spectrumMap, i32x3(id, cascade_index), f32x4(a_b_spectrum(omega, A, B) * dphi_dk(k_mag, omega, paramsBuffer.depth, tan_k), 0.0, 0.0, 1.0));
+	f32 abResults = a_b_spectrum(omega, A, B);
+	imageStore(spectrumMap, i32x3(id, cascade_index), f32x4(abResults * dphi_dk(k_mag, omega, paramsBuffer.depth, tan_k), 0.0, 0.0, 1.0));
+	if (g_id == u32x3(0,0,0)) {
+		spectrumData.omega_peak = pow(0.8 * B, 0.25);
+	}
 }
 
 f32x2 jonswap_spectrum(f32 omega, f32 windSpeed, f32 fetch) {
@@ -108,11 +118,13 @@ kernel[32, 32, 1] jonswapSpectrum(g_id : GlobalInvocationID) {
     f32 tan_k = 0.0;
     f32 omega = dispersion_relation(k_mag, paramsBuffer.depth, tan_k);
     f32x2 jonswap_results = jonswap_spectrum(omega, paramsBuffer.windSpeed, paramsBuffer.fetch);
-    spectrumData.omega_peak = jonswap_results.y;
     imageStore(spectrumMap, 
     	i32x3(id, cascade_index), 
     	f32x4(jonswap_results.x * dphi_dk(k_mag, omega, paramsBuffer.depth, tan_k), 
     	0.0, 0.0, 1.0));
+    if (g_id == u32x3(0,0,0)) {
+		spectrumData.omega_peak = jonswap_results.y;
+	}
 }
 
 
@@ -141,11 +153,12 @@ kernel[32, 32, 1] tmaSpectrum(g_id : GlobalInvocationID) {
     f32 k_mag = get_kmag(id, cascade_index, texSize, tile_length);
     f32 tan_k = 0.0;
     f32 omega = dispersion_relation(k_mag, paramsBuffer.depth, tan_k);
-    f32x2 tma_results = jonswap_spectrum(omega, paramsBuffer.windSpeed, paramsBuffer.fetch) 
-    					* depth_attenuation(omega, paramsBuffer.depth);
-	spectrumData.omega_peak = tma_results.y;
+    f32x2 jonswap_results = jonswap_spectrum(omega, paramsBuffer.windSpeed, paramsBuffer.fetch);
     imageStore(spectrumMap, 
     	i32x3(id, cascade_index), 
-    	f32x4(tma_results.x * dphi_dk(k_mag, omega, paramsBuffer.depth, tan_k), 
+    	f32x4(jonswap_results.x * depth_attenuation(omega, paramsBuffer.depth) * dphi_dk(k_mag, omega, paramsBuffer.depth, tan_k), 
     	0.0, 0.0, 1.0));
+    if (g_id == u32x3(0,0,0)) {
+		spectrumData.omega_peak = jonswap_results.y;
+	}
 }

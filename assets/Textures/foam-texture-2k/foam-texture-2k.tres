@@ -1,0 +1,15 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="./Foam003_2K-PNG_Color.png" id="Color"]
+[ext_resource type="Texture2D" path="./foam-texture-2d_displacement.png" id="Displacement"]
+[ext_resource type="Texture2D" path="./Foam003_2K-PNG_Roughness.png" id="Roughness"]
+[ext_resource type="Texture2D" path="./Foam003_2K-PNG_NormalGL.png" id="NormalGL"]
+[resource]
+albedo_texture = ExtResource("Color")
+roughness_texture = ExtResource("Roughness")
+roughness_texture_channel = 4
+normal_texture = ExtResource("NormalGL")
+normal_enabled = true
+heightmap_texture = ExtResource("Displacement")
+heightmap_scale = 1.0
+heightmap_enabled = true

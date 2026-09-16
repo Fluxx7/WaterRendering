@@ -1,0 +1,54 @@
+#define CBT_INDEX_SIZE_MSB 5
+
+layout(std430) buffer CBTreeBuffer {
+	u32 true_cbt_depth;
+	u32 pow_2_true_depth;
+    i32[] data;
+} cbtree;
+
+layout(std430) buffer CBTDataBuffer {
+	u32 cbt_capacity;
+	u32 id_offset;
+	u32 id_depth_offset;
+	i32 allocations;
+	i32 available_memory;
+};
+
+void set_leaf(i32 index, i32 val) {
+	cbtree.data[cbt_capacity + index] = val;	
+}
+
+void set_leaf(u32 index, i32 val) {
+	cbtree.data[cbt_capacity + index] = val;	
+}
+
+
+#define MAX_DEPTH_BIT 63
+
+i32 get_nth_high_bit(i32 index) {
+	i32 bitID = 1;
+	while (bitID < cbt_capacity) {
+		bitID *= 2;
+		if (index >= cbtree.data[bitID]) {
+			index -= cbtree.data[bitID];
+			bitID++;
+		}
+	}
+	return bitID - i32(cbt_capacity);
+}
+
+i32 get_nth_low_bit(i32 index) {
+	i32 bitID = 1;
+	i32 c = i32(cbt_capacity >> 1);
+	while (bitID < cbt_capacity) {
+		bitID *= 2;
+		if (index >= (c - cbtree.data[bitID])) {
+			index -= (c - cbtree.data[bitID]);
+			bitID++;
+		}
+		c >>= 1;
+	}
+	return bitID - i32(cbt_capacity);
+}
+
+

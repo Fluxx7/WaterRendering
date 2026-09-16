@@ -1,0 +1,29 @@
+#include "cbtree_defs.fsl"
+#include "cbs_indirect_helpers.fsl"
+
+kernel[32, 1, 1] sumReductionPrepass(g_id : GlobalInvocationID) {
+	if (g_id.x >= (cbtree.pow_2_true_depth >> 1)) return;
+	u32 k = (1 << (cbtree.true_cbt_depth - 1)) + g_id.x;
+	u32 sum_left = bitCount(cbtree.data[k << 1]);
+	u32 sum_right = bitCount(cbtree.data[(k << 1) + 1]);
+	cbtree.data[k] = sum_left + sum_right;
+}
+
+kernel[32, 1, 1] sumReductionFinalPass(g_id : GlobalInvocationID, u32 start_depth) {
+	if (g_id.x >= (1 << start_depth)) return;
+	u32 k = (1 << start_depth) + g_id.x;
+	u32 base_val = cbtree.data[k << 1] + cbtree.data[(k << 1) + 1];
+	while (k > 0) {
+		atomicAdd(cbtree.data[k], base_val);
+		k >>= 1;
+	}
+}
+
+kernel[32, 1, 1] sumReduction(g_id : GlobalInvocationID, u32 d, u32 max_threads) {
+	if (g_id.x >= max_threads) return;
+	u32 k = (1 << d) + g_id.x;
+	cbtree.data[k] = cbtree.data[k << 1] + cbtree.data[(k << 1) + 1];
+	if (max_threads == 1 && g_id.x == 0) {
+		indirect_dispatch.d0.x = update_dispatch_buffer(cbtree.data[1]);	
+	}
+}

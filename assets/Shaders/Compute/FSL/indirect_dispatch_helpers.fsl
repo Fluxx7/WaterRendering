@@ -1,0 +1,28 @@
+/*
+ Some helper functions/structs for indirect kernel dispatch 
+ */
+
+struct DispatchArgs {
+	u32 x;
+	u32 y;
+	u32 z;	
+};
+
+DispatchArgs init_dispatch() {
+	return DispatchArgs(0, 1, 1);	
+}
+
+
+layout(std430) buffer WorkgroupCountBuffer {
+	u32 workgroup_count;	
+};
+
+bool update_indirect_dispatch(u32x3 workgroup_id, u32x3 num_workgroups) {
+	memoryBarrierBuffer();
+	if (workgroup_id.x != 0) return (0 == 1);
+	u32 curr_count = atomicAdd(workgroup_count, 1);
+	bool last = (curr_count + 1) == num_workgroups.x;
+	if (last) workgroup_count = 0;
+	return last;
+}
+

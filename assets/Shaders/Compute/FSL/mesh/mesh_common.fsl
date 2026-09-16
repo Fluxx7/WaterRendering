@@ -18,10 +18,18 @@ layout(std430) buffer IndexBuffer : godot_index {
 	Index[] data;
 } index_buffer;
 
-layout(std430) buffer IndirectDrawCommandBuffer : flag_indirect {
+layout(std430) buffer IndirectIndexedDrawCommandBuffer : flag_indirect {
 	u32 index_count;
 	u32 instance_count;
 	u32 first_index;
+	i32 vertex_offset;
+	u32 first_instance;
+} indexed_draw_command_buffer;
+
+layout(std430) buffer IndirectDrawCommandBuffer : flag_indirect {
+	u32 vertex_count;
+	u32 instance_count;
+	u32 first_vertex;
 	i32 vertex_offset;
 	u32 first_instance;
 } draw_command_buffer;

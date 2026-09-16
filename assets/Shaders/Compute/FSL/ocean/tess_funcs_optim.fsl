@@ -1,6 +1,14 @@
 #include "complex.fsl"
 #include "shared_resources.fsl"
 
+/* 
+define this to use the negative spectrum for wave propagation instead of the 
+complex conjugate of the positive spectrum, as described in the Horvath paper
+
+Note that the negative spectrum is currently implemented incorrectly, so it kinda breaks everything lol
+*/
+//define USE_HORVATH_NEGATIVE_SPECTRUM
+
 #define time_cycle 1024.0
 
 f32 dispersion_relation_quant(f32 k_mag, f32 depth) {
@@ -61,7 +69,11 @@ kernel[8, 8, 1] updateSpectrum(g_id : GlobalInvocationID, f32 time) {
 	const f32x2 f_kterm = (id - texSize * 0.5) * coeff;
 	
 	const f32x2 Hnaught = imageLoad(baseSpectrum, i32x3(id, cascade_index)).xy;
+#ifdef USE_HORVATH_NEGATIVE_SPECTRUM
+	const f32x2 Hnaught_star = imageLoad(baseSpectrum, i32x3((i32x2(texSize, texSize) - id) & (texSize - 1), cascade_index)).zw;
+#else
 	const f32x2 Hnaught_star = complex_conj(imageLoad(baseSpectrum, i32x3((i32x2(texSize, texSize) - id) & (texSize - 1), cascade_index)).xy);
+#endif
 	const f32 k_mag = length(f_kterm);
 
 	const f32x2 exp_dispersion = exp_j(time * dispersion_relation_quant(k_mag, depth));

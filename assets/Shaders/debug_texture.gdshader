@@ -14,6 +14,12 @@ void fragment() {
 		case 2: {// foam
 			COLOR = vec4(texSample.yyy, 1.0);
 		} break;
+		case 3: {// base spectrum
+			COLOR = vec4(texSample.xy, 0.0, 1.0);
+		} break;
+		case 4: {// base spectrum inverse
+			COLOR = vec4(texSample.zw, 0.0, 1.0);
+		} break;
 		default:
 			COLOR = texSample;
 			break;

@@ -53,13 +53,13 @@ public partial class FastWaterController : Node {
 	private FSLFile spreadingsShader = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/ocean/spreadings.fsl");
 	private FSLFile bufferUpdateShader = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/ocean/temp.fsl");
 	private ComputeGroup spectrums;
-	private ComputeGroup spreadings;
+	private ComputeKernel spreadings;
 	private ComputeGroup bufferUpdaters;
 	private OptimFftHandler fftHandler;
 	private float _currentSeed;
 	private float _time;
 	public const uint MAX_CASCADES = 4;
-	[Export] public uint numCascades = 2;
+	[Export] public uint NumCascades = 2;
 
 	private Array<float> _tileLengths = new() { 1000f, 370f, 80f, 30f};
 	
@@ -106,13 +106,15 @@ public partial class FastWaterController : Node {
 	private FSLStorageBuffer oceanParams;
 
 	private Dictionary<StringName, Texture2DArrayRD> texRdCache = new();
-	private Array<Image> gaussian_cache = [];
+	private Array<Image> gaussianCache = [];
 	private Array<Vector2> cascadeFoamParams = [
 		new(0.6f, 3.0f),
 		new(0.65f, 2.5f),
 		new(0.7f, 1.5f),
 		new(0.5f, 0.5f)
-	]; 
+	];
+
+	public Array<Vector2> CascadeFoamParams => cascadeFoamParams;
 
 	private Action<Rid> MakeTextureCallback(StringName texture_name) {
 		return tex_rid => {
@@ -160,7 +162,7 @@ public partial class FastWaterController : Node {
 
 	private void UpdateParamBuffer() {
 		bufferUpdaters.Dispatch("updateParams", 1, 1, 1, new Dictionary<StringName, Variant> {
-			{"numCascades", numCascades},
+			{"numCascades", NumCascades},
 			{"windSpeed", _windSpeed},
 			{"windDirection", float.DegreesToRadians(_windDirection)},
 			{"depth", _depth},
@@ -179,29 +181,29 @@ public partial class FastWaterController : Node {
 	}
 
 	private void UpdateCascadeCount() {
-		uint safeCascades = uint.Max(numCascades, 2);
+		uint safeCascades = uint.Max(NumCascades, 2);
 		spectrums.GetTexture2DArray("spectrumMap").SetTextures(_texSize, _texSize, safeCascades);
 		spreadings.GetTexture2DArray("baseSpectrum").SetTextures(_texSize, _texSize, safeCascades);
-		gaussianNoise.SetTextures(_texSize, _texSize, safeCascades, gaussian_cache[..(int)safeCascades]);
-		fftHandler.UpdateCascadeCount(numCascades);
+		gaussianNoise.SetTextures(_texSize, _texSize, safeCascades, gaussianCache[..(int)safeCascades]);
+		fftHandler.UpdateCascadeCount(NumCascades);
 		UpdateParamBuffer();
 		GenerateSpectrum();
 		GenerateWaves(0f);
-		EmitSignalCascadeCountChanged(numCascades);
+		EmitSignalCascadeCountChanged(NumCascades);
 	}
 
 	private void InitShaders() {
 		spectrums = spectrumShader.GetKernelGroup();
-		spreadings = spreadingsShader.GetKernelGroup();
+		spreadings = spreadingsShader.GetKernel("applySpreading");
 		bufferUpdaters = bufferUpdateShader.GetKernelGroup();
 		
 		spectrums.SetSpecializationConstant("halfN", _texSize / 2);
 		spreadings.SetSpecializationConstant("halfN", _texSize / 2);
 		
 		FSLTexture2DArray spectrumMap = spectrums.GetTexture2DArray("spectrumMap");
-		spectrumMap.SetTextures(_texSize, _texSize, uint.Max(numCascades, 2));
+		spectrumMap.SetTextures(_texSize, _texSize, uint.Max(NumCascades, 2));
 		FSLTexture2DArray baseSpectrum = spreadings.GetTexture2DArray("baseSpectrum");
-		baseSpectrum.SetTextures(_texSize, _texSize, uint.Max(numCascades, 2));
+		baseSpectrum.SetTextures(_texSize, _texSize, uint.Max(NumCascades, 2));
 		gaussianNoise = spreadings.GetTexture2DArray("spectrumCoefficients");
 		oceanParams = bufferUpdaters.GetStorageBuffer("oceanParams");
 		oceanParams.SetUnsizedElementCount(MAX_CASCADES);
@@ -209,8 +211,8 @@ public partial class FastWaterController : Node {
 		FSLStorageBuffer spectrumData = spreadings.GetStorageBuffer("spectrumDataBuffer");
 		spectrums.AssignResource(spectrumData, "spectrumDataBuffer");
 		UpdateParamBuffer();
-		for (var tl_index = 0; tl_index < _tileLengths.Count; tl_index++) {
-			UpdateCascadeParam(tl_index);
+		for (var tlIndex = 0; tlIndex < _tileLengths.Count; tlIndex++) {
+			UpdateCascadeParam(tlIndex);
 		}
 		
 		spectrums.AssignResource(oceanParams, "oceanParams");
@@ -225,7 +227,7 @@ public partial class FastWaterController : Node {
 			HeightCallback = MakeTextureCallback("heightMaps"),
 			GradFoamCallback = MakeTextureCallback("gradFoamMaps")
 		};
-		fftHandler = new OptimFftHandler(_texSize, numCascades, baseSpectrum, oceanParams, callbacks);
+		fftHandler = new OptimFftHandler(_texSize, NumCascades, baseSpectrum, oceanParams, callbacks);
 
 		if (controlWindow != null && controlWindowToggle != null) {
 			InitControlWindow();
@@ -240,9 +242,9 @@ public partial class FastWaterController : Node {
 	private void GenerateGaussian() {
 		
 		var rng = new RandomNumberGenerator();
-		gaussian_cache = [];
-		for (int cascade = 0; cascade < (int)numCascades; cascade++) {
-			gaussian_cache.Add(Image.CreateEmpty((int) _texSize, (int) _texSize, false, Image.Format.Rgbaf));
+		gaussianCache = [];
+		for (int cascade = 0; cascade < (int)MAX_CASCADES; cascade++) {
+			gaussianCache.Add(Image.CreateEmpty((int) _texSize, (int) _texSize, false, Image.Format.Rgbaf));
 		}
 		for (int u = 0; u < _texSize; u++) {
 			for (int v = 0; v < _texSize; v++) {
@@ -250,14 +252,15 @@ public partial class FastWaterController : Node {
 					Color newPixel = new Color();
 					newPixel.R = rng.Randfn();
 					newPixel.G = rng.Randfn();
-					newPixel.A = 1f;
-					gaussian_cache[cascade].SetPixel(u,v, newPixel);
+					newPixel.B = rng.Randfn();
+					newPixel.A = rng.Randfn();
+					gaussianCache[cascade].SetPixel(u,v, newPixel);
 				}
 			}
 		}
 		
 
-		gaussianNoise.SetTextures(_texSize, _texSize, numCascades, gaussian_cache[..(int)numCascades]);
+		gaussianNoise.SetTextures(_texSize, _texSize, NumCascades, gaussianCache[..(int)NumCascades]);
 	}
 
 	private void GenerateSpectrum() {
@@ -285,31 +288,13 @@ public partial class FastWaterController : Node {
 				spectrumKernelName = "tmaSpectrum";
 				break;
 		}
-		spectrums.Dispatch(spectrumKernelName, _texSize, _texSize, numCascades, pushConstants);
+		spectrums.Dispatch(spectrumKernelName, _texSize, _texSize, NumCascades, pushConstants);
 		
-		StringName spreadingKernelName = "";
-		pushConstants = new(){
-			{"strength", _spreadingStrength}
-		};
-		
-		switch (spread) {
-			case DirectionalSpreadingFunction.None:
-				spreadingKernelName = "noSpreading";
-				break;
-			case DirectionalSpreadingFunction.Mitsuyasu:
-				spreadingKernelName = "mitsuyasuSpreading";
-				break;
-			case DirectionalSpreadingFunction.Hasselmann:
-				spreadingKernelName = "hasselmannSpreading";
-				break;
-			case DirectionalSpreadingFunction.Tessendorf:
-				spreadingKernelName = "positiveCosSpreading";
-				break;
-			case DirectionalSpreadingFunction.DonelanBanner:
-				spreadingKernelName = "donelanBannerSpreading";
-				break;
-		}
-		spreadings.Dispatch(spreadingKernelName, _texSize, _texSize, numCascades, pushConstants);
+		spreadings.Dispatch(_texSize, _texSize, NumCascades, new Dictionary<StringName, Variant> {
+			{"strength", _spreadingStrength},
+			{"spread_id", (uint) spread},
+			{"swell", _swell}
+		});
 	}
 
 
@@ -318,7 +303,7 @@ public partial class FastWaterController : Node {
 		GenerateWaves(0f);
 	}
 
-	private HBoxContainer createFloatSelector(string text, float starting_value, Action<float> setter, float min_val = 0f, float max_val = 100f, float step = 1f, bool allow_greater = false) {
+	private HBoxContainer CreateFloatSelector(string text, float starting_value, Action<float> setter, float min_val = 0f, float max_val = 100f, float step = 1f, bool allow_greater = false) {
 		var newContainer = new HBoxContainer();
 		var colorLabel = new Label();
 		colorLabel.Text = text;
@@ -387,7 +372,7 @@ public partial class FastWaterController : Node {
 			
 			var tileLengthValues = new HBoxContainer();
 
-			for (var i = 0; i < numCascades; i++) {
+			for (var i = 0; i < NumCascades; i++) {
 				tileLengthValues.AddChild(CreateTileLengthSpinBox(i));
 			}
 
@@ -395,23 +380,23 @@ public partial class FastWaterController : Node {
 			tileLengthControls.AddChild(tileLengthValues);
 			
 			addCascadeButton.Pressed += () => {
-				if (numCascades == 1) {
+				if (NumCascades == 1) {
 					removeCascadeButton.Disabled = false;
 				}
-				tileLengthValues.AddChild(CreateTileLengthSpinBox((int)numCascades));
-				numCascades++;
-				if (numCascades == MAX_CASCADES) {
+				tileLengthValues.AddChild(CreateTileLengthSpinBox((int)NumCascades));
+				NumCascades++;
+				if (NumCascades == MAX_CASCADES) {
 					addCascadeButton.Disabled = true;
 				}
 				UpdateCascadeCount();
 			};
 			removeCascadeButton.Pressed += () => {
-				if (numCascades == 4) {
+				if (NumCascades == 4) {
 					addCascadeButton.Disabled = false;
 				}
-				numCascades--;
-				tileLengthValues.GetNode<SpinBox>($"tileLength{numCascades}").QueueFree();
-				if (numCascades == 1) {
+				NumCascades--;
+				tileLengthValues.GetNode<SpinBox>($"tileLength{NumCascades}").QueueFree();
+				if (NumCascades == 1) {
 					removeCascadeButton.Disabled = true;
 				}
 				UpdateCascadeCount();
@@ -441,10 +426,10 @@ public partial class FastWaterController : Node {
 			spectrumSelector.AddChild(spectrumLabel);
 			spectrumSelector.AddChild(spectrumOption);
 		}
-		HBoxContainer windSpeedControls = createFloatSelector("Wind Speed:", _windSpeed, new_val => _windSpeed = new_val, 0.1f, 1000f, 0.1f);
-		HBoxContainer windDirectionControls = createFloatSelector("Wind Direction:", _windDirection, new_val => _windDirection = new_val, -180f, 180f, 5f);
-		HBoxContainer depthControls = createFloatSelector("Depth:", _depth, new_val => _depth = new_val, 5f, 100000f, 5f);
-		HBoxContainer fetchControls = createFloatSelector("Fetch:", _fetch, new_val => _fetch = new_val, 100f, 10_000_000f, 100f);
+		HBoxContainer windSpeedControls = CreateFloatSelector("Wind Speed:", _windSpeed, new_val => _windSpeed = new_val, 0.1f, 1000f, 0.1f);
+		HBoxContainer windDirectionControls = CreateFloatSelector("Wind Direction:", _windDirection, new_val => _windDirection = new_val, -180f, 180f, 5f);
+		HBoxContainer depthControls = CreateFloatSelector("Depth:", _depth, new_val => _depth = new_val, 5f, 100000f, 5f);
+		HBoxContainer fetchControls = CreateFloatSelector("Fetch:", _fetch, new_val => _fetch = new_val, 100f, 10_000_000f, 100f);
 		var spreadingSelector = new HBoxContainer();
 		{
 			var spreadingLabel = new Label();
@@ -466,8 +451,8 @@ public partial class FastWaterController : Node {
 			spreadingSelector.AddChild(spreadingLabel);
 			spreadingSelector.AddChild(spreadingOption);
 		}
-		HBoxContainer spreadStrengthControls = createFloatSelector("Spreading Strength:", _spreadingStrength,new_val => _spreadingStrength = new_val, 0f, 1f, 0.05f);
-		HBoxContainer swellControls = createFloatSelector("Swell:", _swell,new_val => _swell = new_val, 0f, 1f, 0.05f, true);
+		HBoxContainer spreadStrengthControls = CreateFloatSelector("Spreading Strength:", _spreadingStrength,new_val => _spreadingStrength = new_val, 0f, 1f, 0.05f);
+		HBoxContainer swellControls = CreateFloatSelector("Swell:", _swell,new_val => _swell = new_val, 0f, 1f, 0.05f, true);
 		
 		parameterControls.AddChild(spectrumSelector);
 		parameterControls.AddChild(windSpeedControls);

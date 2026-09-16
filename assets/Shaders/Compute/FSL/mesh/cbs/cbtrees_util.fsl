@@ -1,0 +1,14 @@
+#include "cbtree_defs.fsl"
+
+kernel[32, 1, 1] initCBTree(g_id : GlobalInvocationID, u32 cbt_depth_in) {
+	if (g_id == u32x3(0,0,0)) {
+		cbtree.data[0] = i32(cbt_depth_in);
+		cbt_capacity = 1u << cbt_depth_in;
+		cbtree.true_cbt_depth = cbt_depth_in - CBT_INDEX_SIZE_MSB;
+		cbtree.pow_2_true_depth = 1u << cbtree.true_cbt_depth;
+		available_memory = i32(cbt_capacity);
+	} else {
+		cbtree.data[g_id.x] = 0;	
+	}
+}
+

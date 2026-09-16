@@ -1,0 +1,28 @@
+#include "../../indirect_dispatch_helpers.fsl"
+
+const u32 INDIRECT_KERNEL_SIZE : specialization_constant = 32;
+
+u32 update_dispatch_buffer(i32 count) {
+	return u32((count + INDIRECT_KERNEL_SIZE - 1) / INDIRECT_KERNEL_SIZE);
+}
+
+u32 update_dispatch_buffer(u32 count) {
+	return u32((count + INDIRECT_KERNEL_SIZE - 1) / INDIRECT_KERNEL_SIZE);
+}
+
+u32 update_dispatch_count(u32 slot) {
+	if ((slot & (INDIRECT_KERNEL_SIZE - 1)) == 0) return 1;
+	return 0;
+}
+
+layout(std430) buffer IndirectDispatchBuffer : flag_indirect {
+	DispatchArgs d0;
+	DispatchArgs d1;
+	DispatchArgs d2;
+	DispatchArgs d3;
+	DispatchArgs d4;
+	DispatchArgs d5;
+	DispatchArgs d6;
+	DispatchArgs d7;
+	DispatchArgs d8;
+} indirect_dispatch;

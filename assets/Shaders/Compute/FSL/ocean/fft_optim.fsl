@@ -1,6 +1,6 @@
 #include "complex.fsl"
 #include "shared_resources.fsl"
-//#define USE_NORMALIZATION
+// #define USE_NORMALIZATION
 
 layout(std430) buffer twiddleFactors {
     f32x2[] twiddles;
@@ -15,7 +15,6 @@ layout(std430) buffer fft_buffers {
 
 #define fft_index(x, y) fft_data[(cascade_index * N + y ) * N + x ] 
 #define fft_vindex(v) fft_index(v.x, v.y)
-
 
 kernel[32, 1, 1] twiddleGen(id : GlobalInvocationID) {
 	if (id.x >= halfN) return;
@@ -114,6 +113,7 @@ kernel[halfN, 1, 1] ifftColumn(g_id : GlobalInvocationID, l_id : LocalInvocation
 	for (u32 stage = 0u; stage < logN; stage++) {
 		ifft_stage(stage, curr_source, curr_dest, u32x3(x_coord, y_coord, cascade_index));
 		barrier();
+		
 		u32 next_dest = curr_source;
 		curr_source = curr_dest;
 		curr_dest = next_dest;

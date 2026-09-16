@@ -13,6 +13,7 @@ layout(rgba32f) uniform image2DArray spectrumMap;
 layout(rgba32f) uniform image2DArray baseSpectrum;
 layout(rgba32f) uniform image2DArray spectrumTexture;
 
+
 layout(std430) buffer oceanParams {
 	u32 numCascades;
 	f32 windSpeed;
@@ -28,5 +29,10 @@ layout(std430) buffer spectrumDataBuffer {
 
 f32 dispersion_relation(f32 k_mag, f32 depth, out f32 tan_k) {
     tan_k = tanh(k_mag * depth);
+    return sqrt(g * k_mag * tan_k + pow(k_mag, 3.0) * water_surface_tension / water_density);
+}
+
+f32 dispersion_relation(f32 k_mag, f32 depth) {
+    f32 tan_k = tanh(k_mag * depth);
     return sqrt(g * k_mag * tan_k + pow(k_mag, 3.0) * water_surface_tension / water_density);
 }

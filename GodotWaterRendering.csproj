@@ -5,8 +5,16 @@
   </PropertyGroup>
   <ItemGroup>
     <Content Include="assets\.DS_Store" />
-    <Content Include="assets\Shaders\Compute\FSL\mesh\cbtrees.fsl" />
-    <Content Include="assets\Shaders\Compute\FSL\mesh\cbtree_defs.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\indirect_dispatch_helpers.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\bisector_defs.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\bisector_util.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\cbs_indirect_helpers.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\cbtrees_util.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\cbtree_defs.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\classify_bisectors.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\update_bisectors.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\update_cbtree.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbtree_kernels.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\mesh_common.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\mesh_gen.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\ocean\complex.fsl" />

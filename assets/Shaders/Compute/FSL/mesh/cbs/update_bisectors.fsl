@@ -1,0 +1,602 @@
+#include "cbtree_defs.fsl"
+#include "bisector_defs.fsl"
+#include "classify_bisectors.fsl"
+
+
+kernel[1, 1, 1] prepPipeline() {
+	splitBisectors.count = 0;
+	allocatingBisectors.count = 0;
+	mergeBisectors.count = 0;
+	simplifyingBisectors.count = 0;
+	propagatingBisectors.count_split = 0;
+	propagatingBisectors.count_merge = 0;
+	modifiedBisectors.count = 0;
+	
+    allocations = 0;
+    num_bisectors = cbtree.data[1];
+    available_memory = i32(cbt_capacity - num_bisectors);
+    indexed_draw_command_buffer.index_count = 0;
+	indexed_draw_command_buffer.instance_count = 1;
+	indexed_draw_command_buffer.first_index = 0;
+	indexed_draw_command_buffer.vertex_offset = 0;
+	indexed_draw_command_buffer.first_instance = 0;	
+    
+    indirect_dispatch.d0 = init_dispatch();
+    indirect_dispatch.d1 = init_dispatch();
+    indirect_dispatch.d2 = init_dispatch();
+    indirect_dispatch.d3 = init_dispatch();
+    indirect_dispatch.d4 = init_dispatch();
+    indirect_dispatch.d5 = init_dispatch();
+    indirect_dispatch.d6 = init_dispatch();
+    indirect_dispatch.d7 = init_dispatch();
+    indirect_dispatch.d8 = init_dispatch();
+    
+    
+    indirect_dispatch.d0.x = update_dispatch_buffer(num_bisectors);
+    indirect_dispatch.d3.x = update_dispatch_buffer(num_bisectors);
+}
+
+void split_bisector(i32 b_index) {
+	Neighbors b_neighbors = neighbors[b_index];
+    	
+	if (b_neighbors.prev != -1) {
+		Neighbors prev_neighbors = neighbors[b_neighbors.prev];
+		if (prev_neighbors.twin == b_index && bisectors[b_neighbors.prev].state == STATE_BISECT) return;
+	}
+
+	if (b_neighbors.next != -1) {
+		Neighbors next_neighbors = neighbors[b_neighbors.next];
+		if (next_neighbors.twin == b_index && bisectors[b_neighbors.next].state == STATE_BISECT) return;
+	}
+	
+	i32 max_memory = max(2 * load_depth(b_index) - 1, 3);
+	i32 twin_index = b_neighbors.twin;
+	if (twin_index == -1) {
+		max_memory = 1;
+	} else if (neighbors[twin_index].twin == b_index) {
+		max_memory = 2;
+	}
+
+	i32 remaining_memory = atomicAdd(available_memory, -max_memory);
+	if (remaining_memory < max_memory) {
+		atomicAdd(available_memory, max_memory);
+		return;
+	}
+
+	i32 used_memory = 1;
+	
+	bool done = false;
+	i32 prev_pattern = atomicOr(bisectors[b_index].subdiv_pattern, 1);
+
+	if (prev_pattern != 0) {
+		atomicAdd(available_memory, max_memory);
+		return;
+	}
+	
+	u32 root_location = atomicAdd(allocatingBisectors.count, 1);
+	allocatingBisectors.indices[root_location] = b_index;
+	
+	i32 curr_index = b_index;
+	i32 curr_depth = load_depth(b_index);
+		
+	while (!done) {
+		if (twin_index == -1) {
+			done = true;
+		} else {
+			Neighbors t_neighbors = neighbors[twin_index];
+			i32 twin_depth = load_depth(twin_index);
+			
+			if (twin_depth == curr_depth) {
+				prev_pattern = atomicOr(bisectors[twin_index].subdiv_pattern, SPLIT_TWIN);
+	
+				if (prev_pattern == 0) {
+					u32 target_location = atomicAdd(allocatingBisectors.count, 1);
+					allocatingBisectors.indices[target_location] = twin_index;
+					used_memory++;
+				}
+					
+				done = true;
+			} else {
+				if (t_neighbors.next == curr_index) {
+					prev_pattern = atomicOr(bisectors[twin_index].subdiv_pattern,
+						SPLIT_NEXT | SPLIT_TWIN);
+				} else {
+					prev_pattern = atomicOr(bisectors[twin_index].subdiv_pattern,
+						SPLIT_PREV | SPLIT_TWIN);
+				}
+	
+				if (prev_pattern != 0) {
+					used_memory++;
+					done = true;
+				} else {
+					u32 target_location = atomicAdd(allocatingBisectors.count, 1);
+					allocatingBisectors.indices[target_location] = twin_index;
+					used_memory += 2;
+					curr_index = twin_index;
+					curr_depth = twin_depth;
+					twin_index = neighbors[twin_index].twin;
+				}
+			}
+		}
+	}
+
+	atomicAdd(available_memory, max(max_memory - used_memory, 0));
+}
+
+
+void neighbor_shared_edges(i32 b_index, i32 n_index, out i32 even_edge, out i32 odd_edge) {
+	Bisector neighbor = bisectors[n_index];
+	Neighbors n_neighbors = neighbors[n_index];
+	if (neighbor.subdiv_pattern == 1) {
+		even_edge = neighbor.mem_slots[0];
+		odd_edge = n_index;
+	} else if (neighbor.subdiv_pattern == 3) {
+		odd_edge = n_index;
+		even_edge = n_neighbors.prev == b_index ? neighbor.mem_slots[1] : neighbor.mem_slots[0];
+	} else if (neighbor.subdiv_pattern == 5) {
+		even_edge = neighbor.mem_slots[1];
+		odd_edge = n_neighbors.next == b_index ? neighbor.mem_slots[0] : n_index;
+	} else {
+		if (n_neighbors.prev == b_index) {
+			even_edge = neighbor.mem_slots[1];
+			odd_edge = n_index;
+		} else if (n_neighbors.next == b_index) {
+			even_edge = neighbor.mem_slots[2];
+			odd_edge = neighbor.mem_slots[0];
+		} else {
+			even_edge = neighbor.mem_slots[2];
+			odd_edge = n_index;
+		}
+	}	
+}
+
+void bisect_vertex(i32 b_index, i32 new_index) {
+	i32x4 parent_verts = bisector_indices[b_index];
+	f32x3 v0 = vertex_to_f32x3(vertex_buffer.data[parent_verts.x]);
+	f32x3 v1 = vertex_to_f32x3(vertex_buffer.data[parent_verts.y]);
+	f32x3 new_vert = (v0 + v1) / 2;
+	vertex_buffer.data[new_index] = f32x3_to_vertex(new_vert);
+}
+
+void update_vertex_indices(i32 even_index, i32 odd_index, i32 vert_index) {
+	i32x4 parent_verts = bisector_indices[even_index];
+	i32x4 even_verts = i32x4(parent_verts.x, parent_verts.z, vert_index, parent_verts.y);
+	i32x4 odd_verts = i32x4(parent_verts.z, parent_verts.y, vert_index, parent_verts.x);
+	
+	bisector_indices[even_index] = even_verts;
+	bisector_indices[odd_index] = odd_verts;
+}
+
+void bisect_element(i32 b_index) {
+	Bisector bisector = bisectors[b_index];
+	Neighbors b_neighbors = neighbors[b_index];
+	u64 root_id = bisector_ids[b_index];
+	i32 num_allocations = 1;
+	
+	i32 new_vert_index = bisector.mem_slots[0];
+	if ((bisector.flags & FLAG_SMALLEST) == 0 && b_neighbors.twin != -1) {
+		new_vert_index = bisectors[b_neighbors.twin].mem_slots[0];
+	}
+	if (bisector.subdiv_pattern == 1) {
+		i32 even_prev = -1;
+		i32 odd_next = -1;
+		if (b_neighbors.twin != -1) {
+			neighbor_shared_edges(b_index, b_neighbors.twin, even_prev, odd_next);
+		}
+		
+		u64 even_id = root_id * 2;
+		i32 even_index = b_index;
+		i32 odd_index = bisector.mem_slots[0];
+		
+		update_vertex_indices(even_index, odd_index, new_vert_index);
+
+		bisector_ids[even_index] = even_id;
+		bisector_ids[odd_index] = even_id + 1;
+
+		Bisector m_bisector = bisector;
+
+		m_bisector.flags = FLAG_UPDATE;
+		m_bisector.root_index = b_index;
+
+		neighbors_copy[even_index] = Neighbors(even_prev, odd_index, b_neighbors.prev);
+		neighbors_copy[odd_index] = Neighbors(even_index, odd_next, b_neighbors.next);
+
+		bisectors[b_index] = m_bisector;
+		m_bisector.problematic_neighbor = b_neighbors.next;
+		bisectors[odd_index] = m_bisector;
+		if (b_neighbors.next != -1) {
+			u32 slot = atomicAdd(propagatingBisectors.count_split, 1);
+			propagatingBisectors.indices[slot] = odd_index;
+		}
+	} else if (bisector.subdiv_pattern == 3) {
+		num_allocations = 2;
+
+		i32 even_even_prev;
+		i32 even_odd_next;
+		neighbor_shared_edges(b_index, b_neighbors.prev, even_even_prev, even_odd_next);
+		
+		i32 even_even_twin = -1;
+		i32 odd_next = -1;
+		
+		if (b_neighbors.twin != -1) {
+			neighbor_shared_edges(b_index, b_neighbors.twin, even_even_twin, odd_next);
+		}
+		
+		i32 even1_index = b_index;
+		i32 even2_index = bisector.mem_slots[1];
+		i32 odd_index = bisector.mem_slots[0];
+		
+		update_vertex_indices(even1_index, odd_index, new_vert_index);
+		update_vertex_indices(even1_index, even2_index, bisectors[b_neighbors.prev].mem_slots[0]);
+		
+		bisector_ids[even1_index] = root_id * 4;
+		bisector_ids[even2_index] = root_id * 4 + 1;
+		bisector_ids[odd_index] = root_id * 2 + 1;
+		
+		neighbors_copy[even1_index] = Neighbors(even_even_prev, even2_index, even_even_twin);
+		neighbors_copy[even2_index] = Neighbors( even1_index, even_odd_next,odd_index);
+		neighbors_copy[odd_index] = Neighbors(even2_index, odd_next,b_neighbors.next);
+
+		Bisector m_bisector = bisector;
+
+		m_bisector.flags = FLAG_UPDATE;
+		m_bisector.root_index = b_index;
+
+		bisectors[even1_index] = m_bisector;
+		bisectors[even2_index] = m_bisector;
+		m_bisector.problematic_neighbor = b_neighbors.next;
+		bisectors[odd_index] = m_bisector;
+		if (b_neighbors.next != -1) {
+			u32 slot = atomicAdd(propagatingBisectors.count_split, 1);
+			propagatingBisectors.indices[slot] = odd_index;
+		}
+	} else if (bisector.subdiv_pattern == 5) {
+		num_allocations = 2;
+		
+		i32 odd_even_prev;
+		i32 odd_odd_next;
+		neighbor_shared_edges(b_index, b_neighbors.next, odd_even_prev, odd_odd_next);
+		
+		i32 even_prev = -1;
+		i32 odd_odd_twin = -1;
+		
+		if (b_neighbors.twin != -1) {
+			neighbor_shared_edges(b_index, b_neighbors.twin, even_prev, odd_odd_twin);
+		}
+		
+		i32 even_index = b_index;
+		i32 odd1_index = bisector.mem_slots[0];
+		i32 odd2_index = bisector.mem_slots[1];
+		
+		update_vertex_indices(even_index, odd1_index, new_vert_index);
+		update_vertex_indices(odd1_index, odd2_index, bisectors[b_neighbors.next].mem_slots[0]);
+		
+		bisector_ids[even_index] = root_id * 2;
+		bisector_ids[odd1_index] = root_id * 4 + 2;
+		bisector_ids[odd2_index] = root_id * 4 + 3;
+		
+		neighbors_copy[even_index] = Neighbors(even_prev, odd1_index, b_neighbors.prev);
+		neighbors_copy[odd1_index] = Neighbors(odd_even_prev, odd2_index, even_index);
+		neighbors_copy[odd2_index] = Neighbors(odd1_index, odd_odd_next, odd_odd_twin);
+
+		Bisector m_bisector = bisector;
+
+		m_bisector.flags = FLAG_UPDATE;
+		m_bisector.root_index = b_index;
+
+		bisectors[even_index] = m_bisector;
+		bisectors[odd1_index] = m_bisector;
+		bisectors[odd2_index] = m_bisector;
+		
+	} else if (bisector.subdiv_pattern == 7) {
+		num_allocations = 3;
+		
+		i32 res0X;
+		i32 res0Y;
+		neighbor_shared_edges(b_index, b_neighbors.prev, res0X, res0Y);
+
+		i32 res1X;
+		i32 res1Y;
+		neighbor_shared_edges(b_index, b_neighbors.next, res1X, res1Y);
+		
+		i32 res2X = -1;
+		i32 res2Y = -1;
+		
+		if (b_neighbors.twin != -1) {
+			neighbor_shared_edges(b_index, b_neighbors.twin, res2X, res2Y);
+		}
+		
+		i32 even1_index = b_index;
+		i32 even2_index = bisector.mem_slots[1];
+		i32 odd1_index = bisector.mem_slots[0];
+		i32 odd2_index = bisector.mem_slots[2];
+		
+		update_vertex_indices(even1_index, odd1_index, new_vert_index);
+		update_vertex_indices(even1_index, even2_index, bisectors[b_neighbors.prev].mem_slots[0]);
+		update_vertex_indices(odd1_index, odd2_index, bisectors[b_neighbors.next].mem_slots[0]);
+		
+		bisector_ids[even1_index] = root_id * 4;
+		bisector_ids[even2_index] = root_id * 4 + 1;
+		bisector_ids[odd1_index] = root_id * 4 + 2;
+		bisector_ids[odd2_index] = root_id * 4 + 3;
+		
+		neighbors_copy[even1_index] = Neighbors(res0X, even2_index, res2X);
+		neighbors_copy[odd1_index] = Neighbors(res1X, odd2_index, even2_index);
+		neighbors_copy[even2_index] = Neighbors(even1_index, res0Y, odd1_index);
+		neighbors_copy[odd2_index] = Neighbors(odd1_index, res1Y, res2Y);
+
+		Bisector m_bisector = bisector;
+
+		m_bisector.flags = FLAG_UPDATE;
+		m_bisector.root_index = b_index;
+
+		bisectors[even1_index] = m_bisector;
+		bisectors[even2_index] = m_bisector;
+		bisectors[odd1_index] = m_bisector;
+		bisectors[odd2_index] = m_bisector;
+	}
+
+	for (i32 alloc = 0; alloc < num_allocations; alloc++) {
+		set_leaf(bisector.mem_slots[alloc], 1);
+	}	
+}
+
+
+void update_references(i32 curr_index, i32 neighbor_index) {
+	Neighbors p_neighbors = neighbors[neighbor_index];
+	Bisector bisector = bisectors[curr_index];
+	if (p_neighbors.prev == bisector.root_index) {
+		atomicExchange(neighbors[neighbor_index].prev, curr_index);
+	}
+	if (p_neighbors.next == bisector.root_index) {
+		atomicExchange(neighbors[neighbor_index].next, curr_index);
+	}
+	if (p_neighbors.twin == bisector.root_index) {
+		atomicExchange(neighbors[neighbor_index].twin, curr_index);
+	}
+}
+
+void retrieve_parent_vertex(u64 b_id, i32 even_index, i32 odd_index, Neighbors even_neighbors, Neighbors odd_neighbors) {
+	i32 parent_vertex = -1;
+	u64 new_id = b_id >> 1;
+	if (get_depth(new_id) != 0) {
+		bool is_even = (new_id & 1) == 0;
+		i32 sibling_index = is_even ? odd_neighbors.twin : even_neighbors.twin;
+		i32 sib_vert_index = is_even ? 1 : 0;
+		Neighbors sib_neighbors = neighbors[sibling_index];
+		if (sib_neighbors.twin == even_index || sib_neighbors.twin == odd_index) {
+			sib_vert_index = 3;
+		}
+		parent_vertex = bisector_indices[sibling_index][sib_vert_index];
+	}
+
+	// since it's merging, the vertex at the current Z address will be deallocated,
+	// so we cache the parent vertex ahead of time there to avoid race conditions
+	atomicExchange(bisector_indices[even_index].z, parent_vertex);
+}
+
+void prepare_simplify(i32 b_index) {
+	if (bisectors[b_index].state != STATE_SIMPLIFY) return;
+	Neighbors b_neighbors = neighbors[b_index];
+	u64 b_id = bisector_ids[b_index];
+
+	if ((b_id & 1) != 0) return;
+
+	i32 b_depth = get_depth(b_id);
+	i32 next_index = b_neighbors.next;
+	Bisector next = bisectors[next_index];
+	Neighbors next_neighbors = neighbors[next_index];
+
+	if (load_depth(next_index) != b_depth || next.state != STATE_SIMPLIFY) return;
+
+	i32 twin_odd_index = b_neighbors.prev;
+	i32 twin_even_index = next_neighbors.next;
+	if (twin_even_index != -1) {
+		u64 twin_even_id = bisector_ids[twin_even_index];
+
+		if (b_id > twin_even_id) return;
+
+		if (get_depth(twin_even_id) != b_depth || load_depth(twin_odd_index) != b_depth) return;
+		
+		Bisector twin_odd = bisectors[twin_odd_index];
+		Bisector twin_even = bisectors[twin_even_index];
+
+		if (twin_odd.state != STATE_SIMPLIFY || twin_even.state != STATE_SIMPLIFY) return;
+		retrieve_parent_vertex(twin_even_id, twin_even_index, twin_odd_index, neighbors[twin_even_index], neighbors[twin_odd_index]);
+	}
+
+	u32 location = atomicAdd(simplifyingBisectors.count, 1);
+	simplifyingBisectors.indices[location] = b_index;
+	retrieve_parent_vertex(b_id, b_index, next_index, b_neighbors, next_neighbors);
+}
+
+
+void simplify_pair(i32 even_index, i32 odd_index) {
+	Bisector even = bisectors[even_index];
+	Neighbors even_neighbors = neighbors[even_index];
+	u64 even_id = bisector_ids[even_index];
+	
+	Bisector odd = bisectors[odd_index];
+	Neighbors odd_neighbors = neighbors[odd_index];
+	
+	bisector_ids[even_index] = even_id >> 1;
+	bisector_ids[odd_index] = 0;
+
+	neighbors[even_index] = Neighbors(even_neighbors.twin, odd_neighbors.twin, odd_neighbors.next);
+	
+	even.root_index = odd_index;
+	even.state = STATE_MERGED;
+	even.problematic_neighbor = odd_neighbors.twin;
+	even.flags = FLAG_UPDATE;
+
+	bisectors[even_index] = even;
+	
+	i32x4 even_indices = bisector_indices[even_index];
+    		
+	bisector_indices[even_index] = i32x4(even_indices.x, even_indices.w, even_indices.y, even_indices.z);
+
+	if (odd_neighbors.twin != -1) {
+		u32 location = atomicAdd(propagatingBisectors.count_merge, 1);
+		propagatingBisectors.indices[location] = even_index;
+	}
+
+	odd.state = STATE_MERGED;
+	odd.flags = FLAG_NONE;
+
+	bisectors[odd_index] = odd;
+	
+	set_leaf(odd_index, 0);
+}
+
+/*
+ KERNELS
+ */
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] split(g_id : GlobalInvocationID, num_workgroups : NumWorkGroups, l_id : LocalInvocationID) {
+	if (g_id.x >= splitBisectors.count) return;
+	i32 b_index = splitBisectors.indices[g_id.x];
+	split_bisector(b_index);
+	if (update_indirect_dispatch(l_id, num_workgroups)) {
+		u32 dispatch_workgroups = update_dispatch_buffer(allocatingBisectors.count);
+		indirect_dispatch.d2.x = dispatch_workgroups;
+		indirect_dispatch.d4.x = dispatch_workgroups;
+	}
+}
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] allocate(g_id : GlobalInvocationID) {
+	if (g_id.x >= allocatingBisectors.count) return;
+	i32 b_index = allocatingBisectors.indices[g_id.x];
+	Bisector bisector = bisectors[b_index];
+	if (bisector.subdiv_pattern != 0) {
+		i32 num_allocations = 1;
+		if (has_flag(bisector.subdiv_pattern, SPLIT_PREV)) num_allocations++;
+		if (has_flag(bisector.subdiv_pattern, SPLIT_NEXT)) num_allocations++;
+		i32 first_bit_index = atomicAdd(allocations, num_allocations);
+		for (i32 bit_id = 0; bit_id < num_allocations; bit_id++) {
+			i32 index = get_nth_low_bit(first_bit_index + bit_id);
+			bisector.mem_slots[bit_id] = index;
+		}
+	
+		bool is_smallest = neighbors[b_index].twin == -1;
+		if (!is_smallest) {
+			i32 twin_index = neighbors[b_index].twin;
+			u64 b_id = bisector_ids[b_index];
+			u64 twin_id = bisector_ids[twin_index];
+			i32 b_depth = get_depth(b_id);
+			i32 twin_depth = get_depth(twin_id);
+			if (b_depth > twin_depth || b_id < twin_id) {
+				is_smallest = true;
+			}
+		}
+		if (is_smallest) {
+			bisector.flags |= FLAG_SMALLEST;
+			bisect_vertex(b_index, bisector.mem_slots[0]);
+		}
+
+		bisectors[b_index] = bisector;
+	}
+}
+
+kernel[32, 1, 1] copy(g_id : GlobalInvocationID) {
+	if (g_id.x >= num_bisectors) return;
+	i32 index = get_nth_high_bit(g_id.x);
+	neighbors_copy[index] = neighbors[index];
+}
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] bisect(g_id : GlobalInvocationID, num_workgroups : NumWorkGroups, l_id : LocalInvocationID) {
+	if (g_id.x >= allocatingBisectors.count) return;
+	i32 b_index = allocatingBisectors.indices[g_id.x];
+	bisect_element(b_index);
+	if (update_indirect_dispatch(l_id, num_workgroups)) {
+		indirect_dispatch.d5.x = update_dispatch_buffer(propagatingBisectors.count_split);
+	}
+}
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] propagateBisect(g_id : GlobalInvocationID) {
+	if (g_id.x >= propagatingBisectors.count_split) return;
+	i32 b_index = propagatingBisectors.indices[g_id.x];
+	Bisector bisector = bisectors[b_index];
+	i32 p_index = bisector.problematic_neighbor;
+	if (p_index == -1) return;
+	Bisector p_neighbor = bisectors[p_index];
+	if (p_neighbor.subdiv_pattern == 0) {
+		update_references(b_index, p_index);
+	} else if (p_neighbor.subdiv_pattern == 1) {
+		if (neighbors[p_index].twin == bisector.root_index) {
+			atomicExchange(neighbors[p_index].twin, b_index);
+		}
+		if (neighbors[p_neighbor.root_index].twin == bisector.root_index) {
+			atomicExchange(neighbors[p_neighbor.root_index].twin, b_index);
+		}
+	} else if (p_neighbor.subdiv_pattern == 3) {
+		atomicExchange(neighbors[p_neighbor.mem_slots[1]].twin, b_index);
+	} else if (p_neighbor.subdiv_pattern == 5) {
+		atomicExchange(neighbors[p_index].twin, b_index);
+	}
+
+	atomicExchange(bisectors[b_index].problematic_neighbor, -1);
+}
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] prepareSimplify(g_id : GlobalInvocationID, num_workgroups : NumWorkGroups, l_id : LocalInvocationID) {
+	if (g_id.x >= mergeBisectors.count) return;
+	i32 b_index = mergeBisectors.indices[g_id.x];
+	prepare_simplify(b_index);
+	if (update_indirect_dispatch(l_id, num_workgroups)) {
+		indirect_dispatch.d7.x = update_dispatch_buffer(simplifyingBisectors.count);
+	}
+}
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] simplify(g_id : GlobalInvocationID, num_workgroups : NumWorkGroups, l_id : LocalInvocationID) {
+	if (g_id.x >= simplifyingBisectors.count) return;
+	i32 b_index = simplifyingBisectors.indices[g_id.x];
+	Neighbors b_neighbors = neighbors[b_index];
+    		
+	i32 next_index = b_neighbors.next;
+	Neighbors next_neighbors = neighbors[next_index];
+	
+	i32 twin_odd_index = b_neighbors.prev;
+	i32 twin_even_index = next_neighbors.next;
+
+	simplify_pair(b_index, next_index);
+
+	if (twin_even_index != -1) {
+		simplify_pair(twin_even_index, twin_odd_index);
+	}
+	if (update_indirect_dispatch(l_id, num_workgroups)) {
+		indirect_dispatch.d8.x = update_dispatch_buffer(propagatingBisectors.count_merge);
+	}
+}
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] propagateSimplify(g_id : GlobalInvocationID) {
+	if (g_id.x >= propagatingBisectors.count_merge) return;
+	i32 b_index = propagatingBisectors.indices[g_id.x];
+	Bisector bisector = bisectors[b_index];
+	i32 p_index = bisector.problematic_neighbor;
+	if (p_index == -1) return;
+	Bisector p_bisector = bisectors[p_index];
+	Neighbors p_neighbors = neighbors[p_index];
+
+	if (p_bisector.state != STATE_MERGED) {
+		update_references(b_index, p_index);
+	} else {
+		if (bisector_ids[p_index] != 0) {
+			update_references(b_index, p_index);
+		} else {
+			update_references(b_index, p_neighbors.next);
+		}
+	}
+	
+	bisectors[b_index].problematic_neighbor = -1;
+}
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] prepDraw(g_id : GlobalInvocationID) {
+	if (g_id.x >= cbtree.data[1]) return;
+	i32 b_index = get_nth_high_bit(g_id.x);
+	if (bisector_ids[b_index] == 0) return;
+	u32 slot = atomicAdd(indexed_draw_command_buffer.index_count, 3);
+	u32x3 b_indices = u32x3(bisector_indices[b_index].xyz);
+	if ((load_depth(b_index) & 1) != 0) {
+    	b_indices = b_indices.xzy;
+    }
+	index_buffer.data[slot / 3] = Index(b_indices.x, b_indices.y, b_indices.z);
+}

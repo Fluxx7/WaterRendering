@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c7j36bvqcqrso"]
 
-[ext_resource type="Script" uid="uid://8560q4g3mplt" path="res://assets/Scripts/Utility/DensityTarget.cs" id="1_8adiu"]
 [ext_resource type="Script" uid="uid://cky6u0t1f7a7w" path="res://assets/Scripts/Utility/FPSLabel.cs" id="1_g538k"]
+[ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="2_x3a0b"]
 [ext_resource type="Script" uid="uid://d1qw1be7adl7v" path="res://assets/Scripts/Water/Water.cs" id="3_hgp32"]
 [ext_resource type="Shader" uid="uid://bxwegidev13eg" path="res://assets/Shaders/sum_of_sines_water_tex.gdshader" id="4_x3a0b"]
 
@@ -37,7 +37,7 @@ fog_depth_end = 335.5
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_laryo"]
 render_priority = 0
 shader = ExtResource("4_x3a0b")
-shader_parameter/time = 181.59714
+shader_parameter/time = 359.5208
 shader_parameter/water_scatter_color = Color(0.05283398, 0.77768683, 7.70092e-07, 1)
 shader_parameter/air_bubble_color = Color(0.026580075, 0.03770888, 0.28338134, 1)
 shader_parameter/water_color = Color(0.0033474397, 0.087967, 0.19630623, 1)
@@ -82,7 +82,7 @@ text = "Regenerate Waves
 [node name="Camera3D" type="Camera3D" parent="." unique_id=712581234]
 transform = Transform3D(0.09410826, 0.03127135, -0.9950704, 0, 0.99950635, 0.03141075, 0.9955615, -0.002956013, 0.09406184, -1.573, 17.252, 0.777)
 current = true
-script = ExtResource("1_8adiu")
+script = ExtResource("2_x3a0b")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=525605012]
 transform = Transform3D(-0.114937134, -0.24872066, 0.9617314, 0, 0.9681476, 0.25037998, -0.9933725, 0.028777966, -0.11127613, 0, 6.89, 0)
@@ -94,7 +94,7 @@ environment = SubResource("Environment_6kuhc")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55.294052, 0.30945587, -12.993621)
 mesh = SubResource("PlaneMesh_x3a0b")
 script = ExtResource("3_hgp32")
-Time = 181.59714
+Time = 359.5208
 SumOfSinesTextureMat = SubResource("ShaderMaterial_laryo")
 Size = Vector2(1000, 1000)
 Subdivide = 512
