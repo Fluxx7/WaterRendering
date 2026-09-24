@@ -23,18 +23,15 @@ public partial class ComputePlan
 
     public static implicit operator Variant(ComputePlan wrapper) => wrapper?.Inner ?? default;
 
-    /// <summary>Wraps a GDExtension object in the most-derived C# wrapper for its Godot class.</summary>
-    public static ComputePlan Wrap(GodotObject inner) => inner == null ? null : new ComputePlan(inner);
+    public static ComputePlan MakeNew(RenderingDevice renderingDevice = null) => ComputePlanFactory.Wrap(ClassDB.ClassCallStatic(GDClassName, MethodName.MakeNew, renderingDevice).AsGodotObject());
 
-    public static ComputePlan MakeNew(RenderingDevice renderingDevice = null) => ComputePlan.Wrap(ClassDB.ClassCallStatic(GDClassName, MethodName.MakeNew, renderingDevice).AsGodotObject());
+    public ComputePlan AddBarrier(bool isTemp = false) => ComputePlanFactory.Wrap(Inner.Call(MethodName.AddBarrier, isTemp).AsGodotObject());
 
-    public ComputePlan AddBarrier(bool isTemp = false) => ComputePlan.Wrap(Inner.Call(MethodName.AddBarrier, isTemp).AsGodotObject());
+    public ComputePlan AddKernel(ComputeKernel kernel, uint xInvocations, uint yInvocations, uint zInvocations, Godot.Collections.Dictionary<StringName, Variant> pushConstants = null, bool isTemp = false) => ComputePlanFactory.Wrap(Inner.Call(MethodName.AddKernel, kernel?.Inner, xInvocations, yInvocations, zInvocations, pushConstants ?? new Godot.Collections.Dictionary<StringName, Variant>(), isTemp).AsGodotObject());
 
-    public ComputePlan AddKernel(ComputeKernel kernel, uint xInvocations, uint yInvocations, uint zInvocations, Godot.Collections.Dictionary<StringName, Variant> pushConstants = null, bool isTemp = false) => ComputePlan.Wrap(Inner.Call(MethodName.AddKernel, kernel?.Inner, xInvocations, yInvocations, zInvocations, pushConstants ?? new Godot.Collections.Dictionary<StringName, Variant>(), isTemp).AsGodotObject());
+    public ComputePlan AddKernelWorkgroups(ComputeKernel kernel, uint xWorkgroups, uint yWorkgroups, uint zWorkgroups, Godot.Collections.Dictionary<StringName, Variant> pushConstants = null, bool isTemp = false) => ComputePlanFactory.Wrap(Inner.Call(MethodName.AddKernelWorkgroups, kernel?.Inner, xWorkgroups, yWorkgroups, zWorkgroups, pushConstants ?? new Godot.Collections.Dictionary<StringName, Variant>(), isTemp).AsGodotObject());
 
-    public ComputePlan AddKernelWorkgroups(ComputeKernel kernel, uint xWorkgroups, uint yWorkgroups, uint zWorkgroups, Godot.Collections.Dictionary<StringName, Variant> pushConstants = null, bool isTemp = false) => ComputePlan.Wrap(Inner.Call(MethodName.AddKernelWorkgroups, kernel?.Inner, xWorkgroups, yWorkgroups, zWorkgroups, pushConstants ?? new Godot.Collections.Dictionary<StringName, Variant>(), isTemp).AsGodotObject());
-
-    public ComputePlan AddKernelIndirect(ComputeKernel kernel, FSLBuffer commandBuffer, uint offset, Godot.Collections.Dictionary<StringName, Variant> pushConstants = null, bool isTemp = false) => ComputePlan.Wrap(Inner.Call(MethodName.AddKernelIndirect, kernel?.Inner, commandBuffer?.Inner, offset, pushConstants ?? new Godot.Collections.Dictionary<StringName, Variant>(), isTemp).AsGodotObject());
+    public ComputePlan AddKernelIndirect(ComputeKernel kernel, FSLBuffer commandBuffer, uint offset, Godot.Collections.Dictionary<StringName, Variant> pushConstants = null, bool isTemp = false) => ComputePlanFactory.Wrap(Inner.Call(MethodName.AddKernelIndirect, kernel?.Inner, commandBuffer?.Inner, offset, pushConstants ?? new Godot.Collections.Dictionary<StringName, Variant>(), isTemp).AsGodotObject());
 
     public void AddPlan(ComputePlan subplan, bool isTemp = false) => Inner.Call(MethodName.AddPlan, subplan?.Inner, isTemp);
 

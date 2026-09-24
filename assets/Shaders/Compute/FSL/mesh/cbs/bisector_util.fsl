@@ -1,17 +1,26 @@
 #include "cbtree_defs.fsl"
 #include "bisector_defs.fsl"
 
+/* 
+These kernels are for loading in a halfedge mesh and initializing the root bisectors for it
+*/
+
+/* 
+I'm in the process of replacing this kernel right now, 
+this does the creation of the halfedge mesh and the preparation for the root bisectors all in one,
+which makes it impossible to support arbitrary halfedge meshes
+*/
 kernel[16, 16, 1] initBuffers(_g_id : GlobalInvocationID, f32 sizeX, f32 sizeY, i32 edges_per_side) {
 	
 	i32x3 g_id = i32x3(_g_id);
 	if (g_id.x >= edges_per_side || g_id.y >= edges_per_side) return;
 	i32 max_id = edges_per_side - 1;
-	
+
 	i32 face = g_id.x + g_id.y * edges_per_side;
 	i32 verts_per_row = edges_per_side + 1;
 	
-	// order: [top-left top-right bottom-right bottom-left]
-	i32[4] verts;
+	// order: [top-left top-right bottom-right bottom-left centroid]
+	i32[5] verts;
 	// order: [top right bottom left]
 	i32[4] edges;
 	i32[4] twins;
@@ -21,6 +30,7 @@ kernel[16, 16, 1] initBuffers(_g_id : GlobalInvocationID, f32 sizeX, f32 sizeY, 
 	verts[1] = 1 + first_vert;
 	verts[2] = 1 + first_vert + verts_per_row;	
 	verts[3] = first_vert + verts_per_row;	
+	verts[4] = i32(cbt_capacity + face);
 	
 	i32 first_edge = g_id.x + g_id.y * (2 * verts_per_row);
 	edges[0] = first_edge;
@@ -56,29 +66,102 @@ kernel[16, 16, 1] initBuffers(_g_id : GlobalInvocationID, f32 sizeX, f32 sizeY, 
     f32x3 v2 = f32x3((f32(_g_id.x + 1) - half_size) * step.y, 0.0, (f32(_g_id.y + 1) - half_size) * step.x);
     f32x3 v3 = f32x3((f32(_g_id.x) - half_size) * step.y, 0.0, (f32(_g_id.y + 1) - half_size) * step.x);
     
-    vertex_buffer.data[verts[0]] = f32x3_to_vertex(v0);
     
+    internal_vertices[verts[0]] = f32x3_to_vertex(v0);
+    internal_vertices[verts[4]] = f32x3_to_vertex((v0 + v1 + v2 + v3) / 4.0);
+	set_vertex_leaf(verts[0], 1);
+	vertex_indices[face] = verts[4];
     if (g_id.x == max_id) {
-		vertex_buffer.data[verts[1]] = f32x3_to_vertex(v1);
+		internal_vertices[verts[1]] = f32x3_to_vertex(v1);
+		set_vertex_leaf(verts[1], 1);
 	}
 	if (g_id.y == max_id) {
-		vertex_buffer.data[verts[3]] = f32x3_to_vertex(v3);
+		internal_vertices[verts[3]] = f32x3_to_vertex(v3);
+		set_vertex_leaf(verts[3], 1);
 	}
     if (g_id == i32x3(max_id, max_id, 0)) {
-		vertex_buffer.data[verts[2]] = f32x3_to_vertex(v2);
+		internal_vertices[verts[2]] = f32x3_to_vertex(v2);
+		set_vertex_leaf(verts[2], 1);
 	}
-	vertex_buffer.data[cbt_capacity + face] = f32x3_to_vertex((v0 + v1 + v2 + v3) / 4.0);
+
 	if (_g_id == u32x3(0, 0, 0)) {
-		num_half_edges = 4 * edges_per_side * edges_per_side;
+		u32 num_faces = edges_per_side * edges_per_side;
+		num_half_edges = 4 * num_faces;
 		id_offset = 1 << u32(ceil(log2(f32(num_half_edges))));
 		id_depth_offset = findMSB(id_offset);
+		num_face_verts = num_faces;
 		indirect_dispatch.d0.x = (num_half_edges + 31u) / 32u;
 		indirect_dispatch.d0.y = 1;
 		indirect_dispatch.d0.z = 1;
 	}
 }
 
-kernel[32, 1, 1] makeRootBisectors(g_id : GlobalInvocationID) {
+buffer["HalfEdgeFaceBuffer"] face_buffer {
+	u32 num_faces;
+	u32x2[] face_he_counts;
+};
+
+kernel[1, 1, 1] prepHalfEdgeLoad(g_id : GlobalInvocationID) {
+	face_buffer.num_faces = 0;
+	indirect_dispatch.d0.x = (num_half_edges + 31u) / 32u;
+	indirect_dispatch.d0.y = 1;
+	indirect_dispatch.d0.z = 1;
+}
+
+/* 
+This kernel is used to index faces from a halfedge mesh, as centroid vertices are calculated per face.
+To be able to create these vertices in an optimized fashion, 
+as well as to know the number of faces for an arbitrary mesh,
+each face has the number of associated halfedges stored, as well as the index of one halfedge within the face
+*/
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] indexHalfEdgeFaces(g_id : GlobalInvocationID) {
+	if (g_id.x >= num_half_edges) return;
+	HalfEdge he = half_edges[g_id.x];
+	i32 face = he.face;
+	u32 face_val = atomicAdd(face_buffer.face_he_counts[face].x, 1);
+	
+	// if this is the first invocation for this face, increment the face count and store the index of this halfedge
+	if (face_val == 0) { 
+		atomicAdd(face_buffer.num_faces, 1);
+		atomicExchange(face_buffer.face_he_counts[face].y, g_id.x);
+	}
+}
+
+/* 
+This kernel runs once per face and prepares the centroid vertex for each one while loading all vertices into 
+the bisector vertex buffer
+*/
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] loadHalfEdgeMesh(g_id : GlobalInvocationID) {
+	if (g_id >= face_buffer.num_faces) return;
+	u32 face_index = g_id.x;
+	u32x2 face_info = face_buffer.face_he_counts[face_index];
+	u32 he_count = face_info.x;
+	u32 start_index = face_info.y;
+	HalfEdge curr_he = half_edges[start_index];
+	u32 curr_index = start_index;
+	u32 next_index = curr_he.next;
+	f32x3 center_vert = f32x3(0);
+	for (i32 _he = 0; _he < he_count; _he++) {
+		i32 vert_index = curr_he.vert;
+		Vertex curr_vert = he_verts[vert_index];
+		internal_vertices[vert_index] = curr_vert;
+		set_vertex_leaf(vert_index, 1);
+		
+		center_vert += vertex_to_f32x3(curr_vert);
+		curr_index = next_index;
+		curr_he = half_edges[curr_index];
+		next_index = curr_he.next;
+	}
+	center_vert /= he_count;
+	u32 center_vert_index = cbt_capacity + face_index;
+	internal_vertices[center_vert_index] = f32x3_to_vertex(center_vert);
+	vertex_indices[face_index] = center_vert_index;
+	if (g_id.x == 0) {
+		num_face_verts = face_buffer.num_faces;	
+	}
+}
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] makeRootBisectors(g_id : GlobalInvocationID) {
 	if (g_id.x >= num_half_edges) return;
 	HalfEdge he = half_edges[g_id.x];
 	

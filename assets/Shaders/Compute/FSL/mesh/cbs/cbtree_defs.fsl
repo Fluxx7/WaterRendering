@@ -1,12 +1,12 @@
 #define CBT_INDEX_SIZE_MSB 5
 
-layout(std430) buffer CBTreeBuffer {
+buffer["CBTreeBuffer"] cbtree {
 	u32 true_cbt_depth;
 	u32 pow_2_true_depth;
     i32[] data;
-} cbtree;
+};
 
-layout(std430) buffer CBTDataBuffer {
+buffer["CBTDataBuffer"] {
 	u32 cbt_capacity;
 	u32 id_offset;
 	u32 id_depth_offset;

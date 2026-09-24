@@ -23,9 +23,6 @@ public partial class ComputeKernel
 
     public static implicit operator Variant(ComputeKernel wrapper) => wrapper?.Inner ?? default;
 
-    /// <summary>Wraps a GDExtension object in the most-derived C# wrapper for its Godot class.</summary>
-    public static ComputeKernel Wrap(GodotObject inner) => inner == null ? null : new ComputeKernel(inner);
-
     public enum BufferType : long
     {
         Storage = 0,
@@ -52,19 +49,21 @@ public partial class ComputeKernel
 
     public void AssignResource(FSLResource resource, StringName resourceName) => Inner.Call(MethodName.AssignResource, resource?.Inner, resourceName);
 
-    public FSLStorageBuffer GetStorageBuffer(StringName bufferName) => (FSLStorageBuffer)FSLResource.Wrap(Inner.Call(MethodName.GetStorageBuffer, bufferName).AsGodotObject());
+    public FSLStorageBuffer GetStorageBuffer(StringName bufferName) => (FSLStorageBuffer)FSLResourceFactory.Wrap(Inner.Call(MethodName.GetStorageBuffer, bufferName).AsGodotObject());
 
-    public FSLUniformBuffer GetUniformBuffer(StringName bufferName) => (FSLUniformBuffer)FSLResource.Wrap(Inner.Call(MethodName.GetUniformBuffer, bufferName).AsGodotObject());
+    public FSLUniformBuffer GetUniformBuffer(StringName bufferName) => (FSLUniformBuffer)FSLResourceFactory.Wrap(Inner.Call(MethodName.GetUniformBuffer, bufferName).AsGodotObject());
 
-    public FSLVertexBuffer GetVertexBuffer(StringName bufferName) => (FSLVertexBuffer)FSLResource.Wrap(Inner.Call(MethodName.GetVertexBuffer, bufferName).AsGodotObject());
+    public FSLVertexBuffer GetVertexBuffer(StringName bufferName) => (FSLVertexBuffer)FSLResourceFactory.Wrap(Inner.Call(MethodName.GetVertexBuffer, bufferName).AsGodotObject());
 
-    public FSLIndexBuffer GetIndexBuffer(StringName bufferName) => (FSLIndexBuffer)FSLResource.Wrap(Inner.Call(MethodName.GetIndexBuffer, bufferName).AsGodotObject());
+    public FSLIndexBuffer GetIndexBuffer(StringName bufferName) => (FSLIndexBuffer)FSLResourceFactory.Wrap(Inner.Call(MethodName.GetIndexBuffer, bufferName).AsGodotObject());
 
-    public FSLTexture2D GetTexture2D(StringName textureName) => (FSLTexture2D)FSLResource.Wrap(Inner.Call(MethodName.GetTexture2D, textureName).AsGodotObject());
+    public FSLTexture2D GetTexture2D(StringName textureName) => (FSLTexture2D)FSLResourceFactory.Wrap(Inner.Call(MethodName.GetTexture2D, textureName).AsGodotObject());
 
-    public FSLTexture2DArray GetTexture2DArray(StringName textureName) => (FSLTexture2DArray)FSLResource.Wrap(Inner.Call(MethodName.GetTexture2DArray, textureName).AsGodotObject());
+    public FSLTexture2DArray GetTexture2DArray(StringName textureName) => (FSLTexture2DArray)FSLResourceFactory.Wrap(Inner.Call(MethodName.GetTexture2DArray, textureName).AsGodotObject());
 
-    public FSLResource GetResource(StringName resourceName) => FSLResource.Wrap(Inner.Call(MethodName.GetResource, resourceName).AsGodotObject());
+    public FSLSampler2DArray GetSampler2DArray(StringName samplerName) => (FSLSampler2DArray)FSLResourceFactory.Wrap(Inner.Call(MethodName.GetSampler2DArray, samplerName).AsGodotObject());
+
+    public FSLResource GetResource(StringName resourceName) => FSLResourceFactory.Wrap(Inner.Call(MethodName.GetResource, resourceName).AsGodotObject());
 
     public static class MethodName
     {
@@ -81,6 +80,7 @@ public partial class ComputeKernel
         public static readonly StringName GetIndexBuffer = "get_index_buffer";
         public static readonly StringName GetTexture2D = "get_texture_2d";
         public static readonly StringName GetTexture2DArray = "get_texture_2d_array";
+        public static readonly StringName GetSampler2DArray = "get_sampler_2d_array";
         public static readonly StringName GetResource = "get_resource";
     }
 }

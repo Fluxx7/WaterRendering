@@ -43,10 +43,12 @@ offset_bottom = 28.0
 script = ExtResource("1_jpx6j")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer" unique_id=771151890]
-offset_left = 1708.0
-offset_top = 1.0
-offset_right = 1916.0
-offset_bottom = 240.0
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -208.0
+offset_bottom = 239.0
+grow_horizontal = 0
 
 [node name="Debug View" type="Button" parent="CanvasLayer/VBoxContainer" unique_id=1942487460]
 layout_mode = 2
@@ -143,7 +145,7 @@ debugWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Debug View")
 visualsWindow = NodePath("../Visual Controls")
 visualsWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
 Size = Vector2(22584608, 22584608)
-MaxDepth = 19
+MaxDepth = 18
 BaseSubdivisions = 4
 metadata/_custom_type_script = "uid://dflvs4xa2855f"
 
@@ -158,3 +160,4 @@ _swell = 0.25
 controlWindow = NodePath("../../Water Controls")
 controlWindowToggle = NodePath("../../CanvasLayer/VBoxContainer/Water Controls")
 NumCascades = 4
+TileLengths = Array[float]([2048.0, 370.0, 80.0, 30.0])

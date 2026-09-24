@@ -4,9 +4,9 @@ struct Vertex {
 	f32 z;	
 };
 
-layout(std430) buffer VertexBuffer : godot_vertex {
+buffer["VertexBuffer"] vertex_buffer : godot_vertex, unrestricted {
 	Vertex[] data;
-} vertex_buffer;
+};
 
 struct Index {
 	u32 v0;
@@ -14,26 +14,27 @@ struct Index {
 	u32 v2;	
 };
 
-layout(std430) buffer IndexBuffer : godot_index {
+buffer["IndexBuffer"] index_buffer : godot_index {
 	Index[] data;
-} index_buffer;
+};
 
-layout(std430) buffer IndirectIndexedDrawCommandBuffer : flag_indirect {
+buffer["IndirectIndexedDrawCommandBuffer"] indexed_draw_command_buffer : flag_indirect {
 	u32 index_count;
 	u32 instance_count;
 	u32 first_index;
 	i32 vertex_offset;
 	u32 first_instance;
-} indexed_draw_command_buffer;
-
-layout(std430) buffer IndirectDrawCommandBuffer : flag_indirect {
-	u32 vertex_count;
-	u32 instance_count;
-	u32 first_vertex;
-	i32 vertex_offset;
-	u32 first_instance;
-} draw_command_buffer;
+};
 
 u32 pack_uints(u32 lower, u32 upper) {
 	return lower | (upper << 16);	
+}
+
+
+f32x3 vertex_to_f32x3(Vertex vertex) {
+	return f32x3(vertex.x, vertex.y, vertex.z);
+}
+
+Vertex f32x3_to_vertex(f32x3 vertex_src) {
+	return Vertex(vertex_src.x, vertex_src.y, vertex_src.z);	
 }

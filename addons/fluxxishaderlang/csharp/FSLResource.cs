@@ -21,21 +21,6 @@ public partial class FSLResource
 
     public static implicit operator Variant(FSLResource wrapper) => wrapper?.Inner ?? default;
 
-    /// <summary>Wraps a GDExtension object in the most-derived C# wrapper for its Godot class.</summary>
-    public static FSLResource Wrap(GodotObject inner) => inner?.GetClass() switch
-    {
-        null => null,
-        "FSLRawResource" => new FSLRawResource(inner),
-        "FSLStorageBuffer" => new FSLStorageBuffer(inner),
-        "FSLUniformBuffer" => new FSLUniformBuffer(inner),
-        "FSLVertexBuffer" => new FSLVertexBuffer(inner),
-        "FSLIndexBuffer" => new FSLIndexBuffer(inner),
-        "FSLTexture2D" => new FSLTexture2D(inner),
-        "FSLTexture2DArray" => new FSLTexture2DArray(inner),
-        "FSLTextureView" => new FSLTextureView(inner),
-        _ => new FSLResource(inner),
-    };
-
     public Rid GetRid() => Inner.Call(MethodName.GetRid).As<Rid>();
 
     public void ConnectAndCall(Callable eventHandler) => Inner.Call(MethodName.ConnectAndCall, eventHandler);

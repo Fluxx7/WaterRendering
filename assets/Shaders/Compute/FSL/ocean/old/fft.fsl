@@ -1,11 +1,11 @@
 #include "shared_resources.fsl"
 //#define USE_NORMALIZATION
 
-layout(std430) buffer twiddleFactors {
+buffer["twiddleFactors"] {
     f32x2 twiddles[];
 };
 
-layout(std430) buffer fft_buffers {
+buffer["fft_buffers"] {
     f32x4 fft_data[][2][MAX_CASCADES];
 };
 

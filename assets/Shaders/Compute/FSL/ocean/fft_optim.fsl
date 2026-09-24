@@ -2,14 +2,14 @@
 #include "shared_resources.fsl"
 // #define USE_NORMALIZATION
 
-layout(std430) buffer twiddleFactors {
+buffer["twiddleFactors"] {
     f32x2[] twiddles;
 };
 
 
 // buffer shape:
 // [numCascades][2][N * N]
-layout(std430) buffer fft_buffers {
+buffer["fft_buffers"] {
     f32x2[] fft_data;
 };
 
@@ -31,13 +31,10 @@ shared f32x2[2][N] local_data;
 
 void ifft_stage(u32 stage, u32 curr_source, u32 curr_dest, const u32x3 coords) {
 	const u32 x_coord = coords.x;
-	const u32 y_coord = coords.y;
-	const u32 cascade_index = coords.z;
 	const u32 index_base = N >> (stage + 1);
 	const u32 group_size = 1 << stage;
 	const u32 group_size_mask = group_size - 1;
 	const u32 group = x_coord & ~group_size_mask;
-	const u32 group_index = x_coord & group_size_mask;
 	
 	// compute the indices to read from
 	const u32 source_index_1 = x_coord;

@@ -19,9 +19,12 @@ public partial class FSLIndexBuffer : FSLBuffer
 
     public void SetIndexFormat(RenderingDevice.IndexBufferFormat newFormat) => Inner.Call(MethodName.SetIndexFormat, (long)newFormat);
 
+    public void CopyIndices(FSLBuffer dest, uint numIndices = 0, uint offset = 0, uint destOffsetBytes = 0) => Inner.Call(MethodName.CopyIndices, dest?.Inner, numIndices, offset, destOffsetBytes);
+
     public new static class MethodName
     {
         public static readonly StringName SetIndexCount = "set_index_count";
         public static readonly StringName SetIndexFormat = "set_index_format";
+        public static readonly StringName CopyIndices = "copy_indices";
     }
 }

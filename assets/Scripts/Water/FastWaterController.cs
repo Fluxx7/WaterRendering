@@ -54,6 +54,7 @@ public partial class FastWaterController : Node {
 	private FSLFile bufferUpdateShader = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/ocean/temp.fsl");
 	private ComputeGroup spectrums;
 	private ComputeKernel spreadings;
+	private ComputeKernel oceanVertexShader;
 	private ComputeGroup bufferUpdaters;
 	private OptimFftHandler fftHandler;
 	private float _currentSeed;
@@ -86,6 +87,9 @@ public partial class FastWaterController : Node {
 	[Signal]
 	public delegate void CascadeCountChangedEventHandler(uint num_cascades);
 
+	[Signal]
+	public delegate void SpectrumTexturesReadyEventHandler();
+	
 
 	[Export(PropertyHint.Range, "8, 10")]
 	private uint TexPower {
@@ -113,7 +117,6 @@ public partial class FastWaterController : Node {
 		new(0.7f, 1.5f),
 		new(0.5f, 0.5f)
 	];
-
 	public Array<Vector2> CascadeFoamParams => cascadeFoamParams;
 
 	private Action<Rid> MakeTextureCallback(StringName texture_name) {
@@ -152,12 +155,19 @@ public partial class FastWaterController : Node {
 			_time += (float)delta;
 			GenerateWaves((float)delta);
 		}
+		EmitSignalSpectrumTexturesReady();
 	}
 
 	private void RegenerateWaves() {
 		GenerateGaussian();
 		GenerateSpectrum();
 		GenerateWaves(0.0f);
+	}
+
+	public void BindVertexUpdateShader(ComputeKernel vert_shader) {
+		oceanVertexShader = vert_shader;
+		oceanVertexShader.GetSampler2DArray("heightTexture").BindTexture(fftHandler.displacementTexture);
+		oceanVertexShader.AssignResource(oceanParams, "oceanParams");
 	}
 
 	private void UpdateParamBuffer() {
@@ -228,7 +238,6 @@ public partial class FastWaterController : Node {
 			GradFoamCallback = MakeTextureCallback("gradFoamMaps")
 		};
 		fftHandler = new OptimFftHandler(_texSize, NumCascades, baseSpectrum, oceanParams, callbacks);
-
 		if (controlWindow != null && controlWindowToggle != null) {
 			InitControlWindow();
 		}
@@ -303,7 +312,8 @@ public partial class FastWaterController : Node {
 		GenerateWaves(0f);
 	}
 
-	private HBoxContainer CreateFloatSelector(string text, float starting_value, Action<float> setter, float min_val = 0f, float max_val = 100f, float step = 1f, bool allow_greater = false) {
+	private HBoxContainer CreateFloatSelector(string text, float starting_value, Action<float> setter, 
+											  float min_val = 0f, float max_val = 100f, float step = 1f, bool allow_greater = false) {
 		var newContainer = new HBoxContainer();
 		var colorLabel = new Label();
 		colorLabel.Text = text;
@@ -426,10 +436,14 @@ public partial class FastWaterController : Node {
 			spectrumSelector.AddChild(spectrumLabel);
 			spectrumSelector.AddChild(spectrumOption);
 		}
-		HBoxContainer windSpeedControls = CreateFloatSelector("Wind Speed:", _windSpeed, new_val => _windSpeed = new_val, 0.1f, 1000f, 0.1f);
-		HBoxContainer windDirectionControls = CreateFloatSelector("Wind Direction:", _windDirection, new_val => _windDirection = new_val, -180f, 180f, 5f);
-		HBoxContainer depthControls = CreateFloatSelector("Depth:", _depth, new_val => _depth = new_val, 5f, 100000f, 5f);
-		HBoxContainer fetchControls = CreateFloatSelector("Fetch:", _fetch, new_val => _fetch = new_val, 100f, 10_000_000f, 100f);
+		HBoxContainer windSpeedControls = CreateFloatSelector("Wind Speed:", _windSpeed, new_val => _windSpeed = new_val, 
+			0.1f, 1000f, 0.1f);
+		HBoxContainer windDirectionControls = CreateFloatSelector("Wind Direction:", _windDirection, new_val => _windDirection = new_val, 
+			-180f, 180f, 5f);
+		HBoxContainer depthControls = CreateFloatSelector("Depth:", _depth, new_val => _depth = new_val, 
+			5f, 100000f, 5f);
+		HBoxContainer fetchControls = CreateFloatSelector("Fetch:", _fetch, new_val => _fetch = new_val, 
+			100f, 10_000_000f, 100f);
 		var spreadingSelector = new HBoxContainer();
 		{
 			var spreadingLabel = new Label();
@@ -451,8 +465,10 @@ public partial class FastWaterController : Node {
 			spreadingSelector.AddChild(spreadingLabel);
 			spreadingSelector.AddChild(spreadingOption);
 		}
-		HBoxContainer spreadStrengthControls = CreateFloatSelector("Spreading Strength:", _spreadingStrength,new_val => _spreadingStrength = new_val, 0f, 1f, 0.05f);
-		HBoxContainer swellControls = CreateFloatSelector("Swell:", _swell,new_val => _swell = new_val, 0f, 1f, 0.05f, true);
+		HBoxContainer spreadStrengthControls = CreateFloatSelector("Spreading Strength:", _spreadingStrength,new_val => _spreadingStrength = new_val, 
+			0f, 1f, 0.05f);
+		HBoxContainer swellControls = CreateFloatSelector("Swell:", _swell,new_val => _swell = new_val, 
+			0f, 1f, 0.05f, true);
 		
 		parameterControls.AddChild(spectrumSelector);
 		parameterControls.AddChild(windSpeedControls);

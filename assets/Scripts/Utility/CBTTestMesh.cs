@@ -1,3 +1,4 @@
+using FluxxiShaderLang;
 using Godot;
 using GodotWaterRendering.assets.Scripts.Utility;
 
@@ -29,6 +30,8 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 	private ShaderMaterial _material;
 	private bool _warnedMissingMaterial;
 
+	private FSLFile vertTestFile = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/mesh/cbs/vertex_test.fsl");
+	
 	private DisplayMode _mode = DisplayMode.TriangleId;
 
 	[Export]
@@ -43,8 +46,21 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 	/// <summary>Key that cycles through the display modes at runtime.</summary>
 	[Export] public Key ToggleKey = Key.F1;
 	[Export] public Key PauseKey = Key.F1;
+	private bool useVertexKernel = false;
+
+	[Export]
+	public bool UseVertexKernel {
+		get => useVertexKernel;
+		set {
+			useVertexKernel = value;
+			VertexKernel = value ? vertTestFile.GetKernel("vertexTest") : null;
+		}
+	}
+
+
 
 	public override void _Ready() {
+		if (useVertexKernel) VertexKernel = vertTestFile.GetKernel("vertexTest");
 		ApplyMode();
 	}
 
@@ -53,7 +69,7 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 		
 		if (key.Keycode != ToggleKey) {
 			if (key.Keycode == PauseKey) {
-				update = !update;
+				Update = !Update;
 			}
 			return;
 		}

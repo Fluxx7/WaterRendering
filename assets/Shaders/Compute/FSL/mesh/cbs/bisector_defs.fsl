@@ -1,28 +1,15 @@
 #include "cbtree_defs.fsl"
 #include "../mesh_common.fsl"
 #include "cbs_indirect_helpers.fsl"
-
-struct HalfEdge {
-    i32 twin;
-    i32 next;
-    i32 prev;
-    i32 vert;
-    i32 edge;
-    i32 face;
-};
-
-layout(std430) buffer HalfEdgeBuffer {
-	u32 num_half_edges;
-    HalfEdge[] half_edges;
-};
+#include "../halfedge/halfedge_defs.fsl"
 
 struct Bisector {
 	i32 state;
 	i32 flags;
 	i32 subdiv_pattern;
 	i32 problematic_neighbor;
-	i32 root_index;
     i32x3 mem_slots;
+    i32 root_index;
 };
 
 struct Neighbors {
@@ -31,66 +18,86 @@ struct Neighbors {
 	i32 twin;	
 };
 
-layout(std430) buffer BisectorBuffer {
-	u32 num_bisectors;
+buffer["VertexBitfieldBuffer"] {
+	u32 num_face_verts;
+	u32[] vertex_bitfield;	
+};
+
+void set_vertex_leaf(u32 leaf, u32 val) {
+	vertex_bitfield[leaf] = val;
+}
+
+void set_vertex_leaf(i32 leaf, u32 val) {
+	vertex_bitfield[leaf] = val;
+}
+
+u32 get_vertex_leaf(u32 leaf) {
+	return vertex_bitfield[leaf];
+}
+
+u32 get_vertex_leaf(i32 leaf) {
+	return vertex_bitfield[leaf];
+}
+
+buffer["VertexCountBuffer"] {
+	u32 num_vertices;
+	u32[] vertex_indices;
+};
+
+buffer["InternalVertexBuffer"] : godot_vertex, unrestricted {
+	Vertex[] internal_vertices;
+};
+
+buffer["VertexDispatchBuffer"] vertex_dispatch : flag_indirect {
+	DispatchArgs dims;	
+};
+
+buffer["BisectorBuffer"] {
+	u32 num_bisectors;	
     Bisector[] bisectors;
 };
 
-layout(std430) buffer BisectorIndicesBuffer {
+buffer["BisectorIndicesBuffer"] {
     i32x4[] bisector_indices;
 };
 
-layout(std430) buffer BisectorIDBuffer {
+buffer["BisectorIDBuffer"] {
     u64[] bisector_ids;
 };
 
-layout(std430) buffer NeighborsBuffer {
+buffer["NeighborsBuffer"] {
 	Neighbors[] neighbors;
 };
 
-layout(std430) buffer NeighborsCopyBuffer {
+buffer["NeighborsCopyBuffer"] {
 	Neighbors[] neighbors_copy;
 };
 
-layout(std430) buffer SplitBisectors {
+buffer["SplitBisectors"] splitBisectors {
 	u32 count;
 	i32[] indices;
-} splitBisectors;
+};
 
-layout(std430) buffer AllocatingBisectors {
+buffer["AllocatingBisectors"] allocatingBisectors {
 	u32 count;
 	i32[] indices;
-} allocatingBisectors;
+};
 
-layout(std430) buffer MergeBisectors {
+buffer["MergeBisectors"] mergeBisectors {
 	u32 count;
 	i32[] indices;
-} mergeBisectors;
+};
 
-layout(std430) buffer SimplifyingBisectors {
+buffer["SimplifyingBisectors"] simplifyingBisectors {
 	u32 count;
 	i32[] indices;
-} simplifyingBisectors;
+};
 
-layout(std430) buffer PropagatingBisectors {
+buffer["PropagatingBisectors"] propagatingBisectors {
 	u32 count_split;
 	u32 count_merge;
 	i32[] indices;
-} propagatingBisectors;
-
-layout(std430) buffer ModifiedBisectors {
-	u32 count;
-	i32[] indices;
-} modifiedBisectors;
-
-
-f32x3 vertex_to_f32x3(Vertex vertex) {
-	return f32x3(vertex.x, vertex.y, vertex.z);
-}
-
-Vertex f32x3_to_vertex(f32x3 vertex_src) {
-	return Vertex(vertex_src.x, vertex_src.y, vertex_src.z);	
-}
+};
 
 #define SPLIT_TWIN 1
 #define SPLIT_PREV 2
@@ -104,18 +111,6 @@ Vertex f32x3_to_vertex(f32x3 vertex_src) {
 #define FLAG_NONE 0
 #define FLAG_UPDATE 1
 #define FLAG_SMALLEST 2
-
-bool _true() {
-	return 1 == 1;	
-}
-
-bool _false() {
-	return 1 == 0;	
-}
-
-// stupid hack until I add boolean literals
-#define true _true()
-#define false _false()
 
 bool has_flag(i32 command, i32 flag) {
 	return (command & flag) != 0;	
@@ -143,10 +138,14 @@ i32 load_depth(i32 b_index) {
 }
 
 
-f32x3x3 bisector_vertices(i32 b_index) {
+f32x4x3 bisector_vertices(i32 b_index) {
 	i32x4 indices = bisector_indices[b_index];
-	f32x3 v0 = vertex_to_f32x3(vertex_buffer.data[indices[0]]);
-	f32x3 v1 = vertex_to_f32x3(vertex_buffer.data[indices[1]]);
-	f32x3 v2 = vertex_to_f32x3(vertex_buffer.data[indices[2]]);
-	return f32x3x3(v0, v1, v2);
+	f32x3 v0 = vertex_to_f32x3(internal_vertices[indices[0]]);
+	f32x3 v1 = vertex_to_f32x3(internal_vertices[indices[1]]);
+	f32x3 v2 = vertex_to_f32x3(internal_vertices[indices[2]]);
+	f32x3 vp = f32x3(0);
+	if (load_depth(b_index) > 0) {
+		vp = vertex_to_f32x3(internal_vertices[indices[3]]);
+	}
+	return f32x4x3(v0, v1, v2, vp);
 }

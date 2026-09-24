@@ -6,31 +6,50 @@ using Range = System.Range;
 
 namespace GodotWaterRendering.assets.Scripts.Utility;
 
+[Tool]
 [GlobalClass]
 public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	protected readonly MeshRD Mesh = new();
 
 	private FSLFile cbTreeFile = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/mesh/cbtree_kernels.fsl");
 	private ComputeGroup cbtGroup;
+	private ComputePlan cbtreeUpdateBase = new();
 	private ComputePlan cbtreeUpdate = new();
+	
 	private ComputeKernel bisectKernel;
-	private FSLVertexBuffer vertBuffer;
+	private ComputeKernel vertexKernel;
+	
+
+	public ComputeKernel VertexKernel {
+		get => vertexKernel;
+		set {
+			vertexKernel = value;
+			relinkQueued = true;
+		}
+	}
+
+	private bool useCustom0Buffer = false;
+	private FSLVertexBuffer localVertBuffer, finalVertBuffer, custom0Buffer;
 	private FSLIndexBuffer indexBuffer;
-	private FSLStorageBuffer dispatchBuffer;
+	private FSLStorageBuffer dispatchBuffer, vertexDispatchBuffer;
 	private FSLStorageBuffer commandBuffer;
-	private FSLStorageBuffer bisectorBuffer, bisectorIDs, bisectorNeighbors, bisectorNeighborsCopy, bisectorIndices;
-	private FSLStorageBuffer cbTreeBuffer, cbtDataBuffer, halfEdgeBuffer;
-	private FSLStorageBuffer splitBisectors, allocatingBisectors, mergeBisectors, simplifyingBisectors, propagatingBisectors, modifiedBisectors;
+	private FSLStorageBuffer bisectorBuffer, bisectorIDs, bisectorNeighbors, bisectorNeighborsCopy, bisectorIndices, vertexIndices;
+	private FSLStorageBuffer cbTreeBuffer, cbtDataBuffer, halfEdgeBuffer, vertexBitfieldBuffer;
+	private FSLStorageBuffer splitBisectors, allocatingBisectors, mergeBisectors, simplifyingBisectors, propagatingBisectors;
 	private uint numVertices, numIndices;
-	private Rid vertBufferId, indexBufferId, commandBufferId;
-	private bool rebuildQueued = false;
+	private Rid vertBufferId, indexBufferId, commandBufferId, custom0BufferId;
+	protected bool rebuildQueued = false;
+	private bool relinkQueued = false;
 
 	private bool needsInit = true;
 	private bool _cbtSizeDirty = false;
 
 	private uint maxDepth = 16;
 	private uint _baseSubdivisions = 16;
-	public bool update = true;
+	
+	protected FSLUniformBuffer cameraInfoBuffer;
+	public bool Update = true;
+	private bool customVertexKernel = false;
 
 	[Export(PropertyHint.Range, "1, 64,")] public uint UpdatesPerFrame = 1;
 
@@ -77,8 +96,32 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		}
 	}
 	
-	private uint surfaceFormat = (uint) (Godot.Mesh.ArrayFormat.FormatVertex | Godot.Mesh.ArrayFormat.FormatIndex);
+	private uint _triangleSize = 65;
+	
+	[Export]
+	public uint TriangleSize {
+		get => _triangleSize;
+		set {
+			_triangleSize = value;
+			UpdateTriangleSizeBuffer();
+		}
+	}
+
+	protected void RedisplaceVerts() {
+		vertexKernel.DispatchIndirect(vertexDispatchBuffer, 0);
+	}
+	
 	private uint surfacePrimitiveType = (uint) Godot.Mesh.PrimitiveType.Triangles;
+
+	private Mesh.ArrayFormat GetSurfaceFormat() {
+		Mesh.ArrayFormat format = Godot.Mesh.ArrayFormat.FormatVertex | Godot.Mesh.ArrayFormat.FormatIndex;
+		if (useCustom0Buffer) {
+			format |= Godot.Mesh.ArrayFormat.FormatCustom0;
+			format |= (Mesh.ArrayFormat)((ulong)Godot.Mesh.ArrayCustomFormat.RgbaFloat
+										 << (int)Godot.Mesh.ArrayFormat.FormatCustom0Shift);
+		}
+		return format;
+	}
 	
 	public override void _EnterTree() {
 		SetBase(Mesh.GetRid());
@@ -90,6 +133,10 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		needsInit = false;
 		InitCBTrees();
 		ConnectFrameDriver();
+		if (relinkQueued) {
+			RelinkVertexKernel();
+			relinkQueued = false;
+		}
 	}
 	
 	public override void _ExitTree() {
@@ -108,7 +155,40 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	private void OnFramePreDraw() {
 		if (needsInit) return;
 		if (rebuildQueued) UpdateParams();
-		if (update) UpdateCBTrees();
+		if (Engine.IsEditorHint()) return;
+		if (relinkQueued) {
+			RelinkVertexKernel();
+			relinkQueued = false;
+		}
+		if (Update) UpdateCBTrees();
+	}
+
+	private void UpdateTriangleSizeBuffer() {
+		cbtGroup?.GetUniformBuffer("ClassificationTarget")?.SetBuffer(new Dictionary<StringName, Variant> {
+			{"triangle_size", _triangleSize}
+		});
+	}
+	
+	protected void UpdateCBTrees() {
+		Camera3D cam = GetViewport()?.GetCamera3D();
+		if (cam is null) return;
+		Vector3 localCam = GlobalTransform.AffineInverse() * cam.GlobalPosition;
+		float viewportHeight = cam.GetViewport().GetVisibleRect().Size.Y;
+		Projection mvp = cam.GetCameraProjection() * new Projection(cam.GetCameraTransform().AffineInverse() * GlobalTransform);
+		Basis toLocal = GlobalTransform.AffineInverse().Basis;
+		Vector3 viewDir = -(toLocal * cam.GlobalTransform.Basis.Z).Normalized();
+		
+		cameraInfoBuffer.SetBuffer(new Dictionary<StringName, Variant> {
+			{"camera_pos", localCam},
+			{"screen_size", new Vector2(viewportHeight, cam.GetViewport().GetVisibleRect().Size.X)},
+			{"view_vector", viewDir},
+			{"modelToView", mvp},
+			{"_padding1", 0f},
+			{"_padding2", 0f}
+		});
+		for (var i = 0; i < UpdatesPerFrame; i++) {
+			cbtreeUpdate.Dispatch();
+		}
 	}
 	
 	private void UpdateParams() {
@@ -119,6 +199,45 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		}
 
 		rebuildQueued = false;
+	}
+
+	private void RelinkVertexKernel() {
+		if (vertexKernel == null) {
+			UnlinkVertexKernel();
+		} else {
+			LinkVertexKernel();
+		}
+	}
+
+	public void EnableCustom0Buffer(FSLVertexBuffer custom0_buffer) {
+		custom0Buffer = custom0_buffer;
+		custom0Buffer.SetVertexSizeBytes(16);
+		custom0Buffer.SetVertexCount(numVertices);
+		custom0Buffer.ConnectAndCall(Callable.From((Rid new_rid) => {
+			custom0BufferId = new_rid;
+			rebuildQueued = true;
+		}));
+		useCustom0Buffer = true;
+	}
+	
+	private void LinkVertexKernel() {
+		customVertexKernel = true;
+		localVertBuffer.SetVertexCount(numVertices);
+		finalVertBuffer.CopyTo(localVertBuffer);
+		cbtGroup.AssignResource(localVertBuffer, "InternalVertexBuffer");
+		vertexKernel.AssignResource(localVertBuffer, "VertexInputBuffer");
+		vertexKernel.AssignResource(finalVertBuffer, "VertexOutputBuffer");
+		vertexKernel.AssignResource(cameraInfoBuffer, "CameraBuffer");
+		vertexKernel.AssignResource(vertexIndices, "VertexCountBuffer");
+		cbtreeUpdate.AddBarrier().AddKernelIndirect(vertexKernel, vertexDispatchBuffer, 0);
+	}
+
+	private void UnlinkVertexKernel() {
+		customVertexKernel = false;
+		localVertBuffer.CopyTo(finalVertBuffer);
+		cbtGroup.AssignResource(finalVertBuffer, "InternalVertexBuffer");
+		cbtreeUpdate = ComputePlan.MakeNew();
+		cbtreeUpdate.AddPlan(cbtreeUpdateBase);
 	}
 	
 	private void RebuildRootMesh() {
@@ -138,10 +257,15 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		numVertices = Math.Max(66537, maxBisectorCount + num_faces); 
 		numIndices = Math.Max(66537, maxBisectorCount * 3);
 
-		vertBuffer.SetVertexCount(numVertices);
-		vertBuffer.SetVertexSizeBytes(12);
+		finalVertBuffer.SetVertexCount(numVertices);
+		if (customVertexKernel) {
+			localVertBuffer.SetVertexCount(numVertices);
+		}
 		indexBuffer.SetIndexCount(numIndices);
 		indexBuffer.SetIndexFormat(RenderingDevice.IndexBufferFormat.Uint32);
+
+		vertexIndices = cbtGroup.GetStorageBuffer("VertexCountBuffer");
+		vertexIndices.SetUnsizedElementCount(numVertices);
 
 		bisectorBuffer = cbtGroup.GetStorageBuffer("BisectorBuffer");
 		bisectorBuffer.SetUnsizedElementCount(maxBisectorCount);
@@ -150,6 +274,9 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		bisectorNeighbors = cbtGroup.GetStorageBuffer("NeighborsBuffer");
 		bisectorNeighbors.SetUnsizedElementCount(maxBisectorCount);
 		bisectKernel.AssignResource(bisectorNeighbors, "NeighborsCopyBuffer");
+
+		vertexBitfieldBuffer = cbtGroup.GetStorageBuffer("VertexBitfieldBuffer");
+		vertexBitfieldBuffer.SetUnsizedElementCount(maxBisectorCount);
 		
 		
 		bisectorNeighborsCopy = cbtGroup.GetStorageBuffer("NeighborsCopyBuffer");
@@ -177,9 +304,6 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		propagatingBisectors.SetUnsizedElementCount(maxBisectorCount);
 		bisectKernel.AssignResource(propagatingBisectors, "PropagatingBisectors");
 		
-		modifiedBisectors = cbtGroup.GetStorageBuffer("ModifiedBisectors");
-		modifiedBisectors.SetUnsizedElementCount(maxBisectorCount);
-		
 		bisectorIndices = cbtGroup.GetStorageBuffer("BisectorIndicesBuffer");
 		bisectorIndices.SetUnsizedElementCount(maxBisectorCount);
 		bisectKernel.AssignResource(bisectorIndices, "BisectorIndicesBuffer");
@@ -193,6 +317,8 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		
 		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
 		halfEdgeBuffer.SetUnsizedElementCount(rootBisectorCount);
+		
+		cameraInfoBuffer = cbtGroup.GetUniformBuffer("CameraBuffer");
 		
 		cbtGroup.Dispatch("prepPipeline", 1,1 ,1);
 		
@@ -217,17 +343,19 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 				{"max_threads", maxThreads}
 			});
 		}
+		cbtGroup.DispatchIndirect("prepDraw", dispatchBuffer, 0);
 		
 		Mesh.ClearSurfaces();
 		
 		Mesh.AddSurface(
-			(Mesh.ArrayFormat) surfaceFormat,
+			GetSurfaceFormat(),
 			(Mesh.PrimitiveType) surfacePrimitiveType,
 			(int)numVertices,
 			vertBufferId,
 			Engine.IsEditorHint() ? new Aabb(new Vector3(-Size.X * 0.5f, -1f, -Size.Y * 0.5f),
 				new Vector3(Size.X, 1f, Size.Y)) : new Aabb(new Vector3(-Size.X * 0.5f, -1f, -Size.Y * 0.5f),
 				new Vector3(Size.X, 100f, Size.Y)),
+			useCustom0Buffer ? custom0BufferId : default,
 			indexCount: (int)numIndices,
 			indexBuffer: indexBufferId,
 			material: _surfaceMaterial,
@@ -235,36 +363,27 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		);
 	}
 	
-	private void UpdateCBTrees() {
-		Camera3D cam = GetViewport()?.GetCamera3D();
-		if (cam is null) return;
-		Vector3 localCam = GlobalTransform.AffineInverse() * cam.GlobalPosition;
-		float viewportHeight = cam.GetViewport().GetVisibleRect().Size.Y;
-		float projScale = 0.5f * viewportHeight * cam.GetCameraProjection().Y.Y;
-		
-		cbtGroup.DispatchWorkgroups("updateCamera", 1, 1, 1, new Dictionary<StringName, Variant> {
-			{"cam_x", localCam.X},
-			{"cam_y", localCam.Y},
-			{"cam_z", localCam.Z},
-			{"proj_scale", projScale}
-		});
-		for (var i = 0; i < UpdatesPerFrame; i++) {
-			cbtreeUpdate.Dispatch();
-		}
-	}
+	
 	
 	private void InitCBTrees() {
 		bisectKernel = cbTreeFile.GetKernel("bisect");
 		cbtGroup = cbTreeFile.GetKernelGroup();
 		dispatchBuffer = cbtGroup.GetStorageBuffer("IndirectDispatchBuffer");
-		cbtGroup.AssignResource(dispatchBuffer, "IndirectDispatchBuffer");
 		bisectKernel.AssignResource(dispatchBuffer, "IndirectDispatchBuffer");
+		vertexDispatchBuffer = cbtGroup.GetStorageBuffer("VertexDispatchBuffer");
 		
-		vertBuffer = cbtGroup.GetVertexBuffer("VertexBuffer");
+		finalVertBuffer = cbtGroup.GetVertexBuffer("VertexBuffer");
+		localVertBuffer = cbtGroup.GetVertexBuffer("InternalVertexBuffer");
+		
+		UpdateTriangleSizeBuffer();
+		
+		finalVertBuffer.SetVertexSizeBytes(12);
+		localVertBuffer.SetVertexSizeBytes(12);
+		cbtGroup.AssignResource(finalVertBuffer, "InternalVertexBuffer");
 		indexBuffer = cbtGroup.GetIndexBuffer("IndexBuffer");
 		commandBuffer = cbtGroup.GetStorageBuffer("IndirectIndexedDrawCommandBuffer");
 		
-		vertBuffer.ConnectAndCall(Callable.From((Rid new_rid) => { 
+		finalVertBuffer.ConnectAndCall(Callable.From((Rid new_rid) => { 
 			vertBufferId = new_rid;
 			rebuildQueued = true;
 		}));
@@ -284,8 +403,8 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	}
 
 	private void RebuildCBTGenPlan() {
-		cbtreeUpdate = ComputePlan.MakeNew();
-		cbtreeUpdate.AddKernel(cbtGroup.GetKernel("prepPipeline"), 1, 1, 1)
+		cbtreeUpdateBase = ComputePlan.MakeNew();
+		cbtreeUpdateBase.AddKernel(cbtGroup.GetKernel("prepPipeline"), 1, 1, 1)
 			.AddBarrier()
 			.AddKernelIndirect(cbtGroup.GetKernel("classify"), dispatchBuffer, 0)
 			.AddBarrier()
@@ -306,13 +425,18 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		for (uint i = 1; i <= CbtDepth; i++) {
 			uint d = CbtDepth - i;
 			var maxThreads = (uint)Math.Pow(2, d);
-			cbtreeUpdate.AddBarrier().AddKernel(cbtGroup.GetKernel("sumReduction"), maxThreads, 1, 1, new Dictionary<StringName, Variant> {
+			cbtreeUpdateBase.AddBarrier().AddKernel(cbtGroup.GetKernel("sumReduction"), maxThreads, 1, 1, new Dictionary<StringName, Variant> {
 				{"d", d},
 				{"max_threads", maxThreads}
 			});
 		}
 
-		cbtreeUpdate.AddBarrier()
+		cbtreeUpdateBase.AddBarrier()
 			.AddKernelIndirect(cbtGroup.GetKernel("prepDraw"), dispatchBuffer, 0);
+		if (customVertexKernel) {
+			cbtreeUpdate.AddBarrier().AddKernelIndirect(vertexKernel, vertexDispatchBuffer, 0);
+		}
+		cbtreeUpdate = ComputePlan.MakeNew();
+		cbtreeUpdate.AddPlan(cbtreeUpdateBase);
 	}
 }

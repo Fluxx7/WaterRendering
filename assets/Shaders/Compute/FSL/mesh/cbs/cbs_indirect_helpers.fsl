@@ -15,7 +15,7 @@ u32 update_dispatch_count(u32 slot) {
 	return 0;
 }
 
-layout(std430) buffer IndirectDispatchBuffer : flag_indirect {
+buffer["IndirectDispatchBuffer"] indirect_dispatch : flag_indirect {
 	DispatchArgs d0;
 	DispatchArgs d1;
 	DispatchArgs d2;
@@ -25,4 +25,4 @@ layout(std430) buffer IndirectDispatchBuffer : flag_indirect {
 	DispatchArgs d6;
 	DispatchArgs d7;
 	DispatchArgs d8;
-} indirect_dispatch;
+};

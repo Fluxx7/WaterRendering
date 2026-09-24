@@ -13,13 +13,13 @@ DispatchArgs init_dispatch() {
 }
 
 
-layout(std430) buffer WorkgroupCountBuffer {
+buffer["WorkgroupCountBuffer"] {
 	u32 workgroup_count;	
 };
 
 bool update_indirect_dispatch(u32x3 workgroup_id, u32x3 num_workgroups) {
 	memoryBarrierBuffer();
-	if (workgroup_id.x != 0) return (0 == 1);
+	if (workgroup_id.x != 0) return false;
 	u32 curr_count = atomicAdd(workgroup_count, 1);
 	bool last = (curr_count + 1) == num_workgroups.x;
 	if (last) workgroup_count = 0;

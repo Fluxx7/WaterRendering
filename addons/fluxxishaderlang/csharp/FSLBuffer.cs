@@ -19,10 +19,19 @@ public partial class FSLBuffer : FSLResource
 
     public void RemoveFlag(ulong flag) => Inner.Call(MethodName.RemoveFlag, flag);
 
+    public uint GetSizeBytes() => Inner.Call(MethodName.GetSizeBytes).As<uint>();
+
+    public void CopyTo(FSLBuffer dest, bool allowDifferentSize = true) => Inner.Call(MethodName.CopyTo, dest?.Inner, allowDifferentSize);
+
+    public void CopyBytes(FSLBuffer dest, uint numBytes, uint offsetSrc = 0, uint offsetDest = 0) => Inner.Call(MethodName.CopyBytes, dest?.Inner, numBytes, offsetSrc, offsetDest);
+
     public new static class MethodName
     {
         public static readonly StringName AddFlag = "add_flag";
         public static readonly StringName SetFlags = "set_flags";
         public static readonly StringName RemoveFlag = "remove_flag";
+        public static readonly StringName GetSizeBytes = "get_size_bytes";
+        public static readonly StringName CopyTo = "copy_to";
+        public static readonly StringName CopyBytes = "copy_bytes";
     }
 }

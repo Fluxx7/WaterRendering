@@ -27,27 +27,27 @@ since we are running a one-dimensional FFT on each row, we index row-major
 to make this easier, the macro fft_index handles everything automatically.
 the arguments are the x coordinate, the y coordinate, and then which of the two arrays to access 
 */
-layout(std430) buffer fft1_buffers {
+buffer["fft1_buffers"] {
     f32x2[] fft1_data;
 };
 #define fft1_index(x, y) fft1_data[(cascade_index * texSize + y ) * texSize + x ] 
 #define fft1_vindex(v) fft1_index(v.x, v.y)
 
-layout(std430) buffer fft2_buffers {
+buffer["fft2_buffers"] {
     f32x2[] fft2_data;
 };
 
 #define fft2_index(x, y) fft2_data[(cascade_index * texSize + y ) * texSize + x ] 
 #define fft2_vindex(v) fft2_index(v.x, v.y)
 
-layout(std430) buffer fft3_buffers {
+buffer["fft3_buffers"] {
     f32x2[] fft3_data;
 };
 
 #define fft3_index(x, y) fft3_data[(cascade_index * texSize + y ) * texSize + x ] 
 #define fft3_vindex(v) fft3_index(v.x, v.y)
 
-layout(std430) buffer fft4_buffers {
+buffer["fft4_buffers"] {
     f32x2[] fft4_data;
 };
 
@@ -112,8 +112,8 @@ kernel[8, 8, 1] updateSpectrum(g_id : GlobalInvocationID, f32 time) {
 }
 
 
-layout(rgba16f) uniform image2DArray heightTexture;
-layout(rgba16f) uniform image2DArray gradFoamTexture;
+uniform image2DArray<f16x4> heightTexture;
+uniform image2DArray<f16x4> gradFoamTexture;
 
 kernel[8, 8, 1] ifftUnpack(g_id : GlobalInvocationID, f32 deltaTime) {
 	if (g_id.x >= N) return;

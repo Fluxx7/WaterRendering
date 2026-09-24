@@ -1,6 +1,6 @@
 #include "shared_resources.fsl"
 
-layout(rgba32f) uniform image2DArray spectrumCoefficients;
+uniform image2DArray<f32x4> spectrumCoefficients;
 
 f32 positive_cos_spreading(f32 theta) {
     if (abs(theta) > (PI / 2.0)) {

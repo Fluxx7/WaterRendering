@@ -8,6 +8,26 @@ struct OceanLightInfo {
 	float sss_strength;
 };
 
+struct VertexOut {
+	vec2 uv;
+	vec3 vert_pos;
+	float v_displacement;
+	vec2[4] coords;
+	float dist_factor;
+};
+
+VertexOut ocean_vertex(int cascade_count, vec4 custom0, in float[4] tileLengths, in sampler2DArray heightMaps) {
+	VertexOut output;
+	for (int cascade = 0; cascade < cascade_count; cascade++) {
+		output.coords[cascade] = custom0.xy / tileLengths[cascade];
+	}
+	output.uv = custom0.xy;
+	output.vert_pos = vec3(custom0.x, custom0.z, custom0.y);
+	output.dist_factor = custom0.w;
+	output.v_displacement = custom0.z;
+	return output;
+}
+
 OceanLightInfo ocean_lighting_intensity(in vec3 light, in vec3 view, in mat4 view_matrix, in vec3 mesonormal, in float wave_height){
 	OceanLightInfo output;
 	

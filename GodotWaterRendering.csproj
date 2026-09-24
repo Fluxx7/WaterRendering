@@ -14,12 +14,17 @@
     <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\classify_bisectors.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\update_bisectors.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\update_cbtree.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\vertex_test.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\cbs_vertex_includes.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\cbtree_kernels.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\halfedge\halfedge_defs.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\mesh\halfedge\halfedge_util.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\mesh_common.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\mesh_gen.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\ocean\complex.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\ocean\fft_optim.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\ocean\mipmaps.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\ocean\ocean_vertex.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\ocean\old\fft.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\ocean\old\tessendorf_funcs.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\ocean\shared_resources.fsl" />

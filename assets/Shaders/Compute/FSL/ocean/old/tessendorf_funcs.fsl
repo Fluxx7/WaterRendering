@@ -18,13 +18,13 @@ since we are running a one-dimensional FFT on each row, we index row-major
 to make this easier, the macro fft_index handles everything automatically.
 the arguments are the x coordinate, the y coordinate, and then which of the two arrays to access 
 */
-layout(std430) buffer fft1_buffers {
+buffer["fft1_buffers"] {
     f32x4 fft1_data[][2][MAX_CASCADES];
 };
 #define fft1_index(x, y, b) fft1_data[ x + y * texSize][ b ][cascade_index] 
 #define fft1_vindex(v, b) fft1_data[ v.x + v.y * texSize][ b ][cascade_index] 
 
-layout(std430) buffer fft2_buffers {
+buffer["fft2_buffers"] {
     f32x4 fft2_data[][2][MAX_CASCADES];
 };
 
@@ -82,10 +82,10 @@ kernel[32, 32, 1] updateSpectrum(g_id : GlobalInvocationID, i32 texSize, f32 tim
 }
 
 
-layout(rgba16f) uniform image2DArray heightTexture;
-layout(rgba16f) uniform image2DArray gradientTexture;
-layout(rgba16f) uniform image2DArray foamTexture;
-layout(rgba16f) uniform image2DArray normalTexture;
+uniform image2DArray<f16x4> heightTexture;
+uniform image2DArray<f16x4> gradientTexture;
+uniform image2DArray<f16x4> foamTexture;
+uniform image2DArray<f16x4> normalTexture;
 
 kernel[32, 32, 1] ifftUnpack(g_id : GlobalInvocationID, i32 texSize, f32 foam_grow_rate, f32 foam_decay_rate, f32 whitecap, u32 curr_source1, u32 curr_source2) {
 	if (g_id.x >= texSize) return;

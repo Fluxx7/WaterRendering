@@ -19,7 +19,7 @@ public partial class FSLTexture2DArray : FSLTexture
 
     public void SetTextures(uint texWidth, uint texHeight, uint texCount, Godot.Collections.Array<Image> images = null) => Inner.Call(MethodName.SetTextures, texWidth, texHeight, texCount, images ?? new Godot.Collections.Array<Image>());
 
-    public FSLTextureView GetMipView(uint mipLevel) => (FSLTextureView)FSLResource.Wrap(Inner.Call(MethodName.GetMipView, mipLevel).AsGodotObject());
+    public FSLTextureView GetMipView(uint mipLevel) => (FSLTextureView)FSLResourceFactory.Wrap(Inner.Call(MethodName.GetMipView, mipLevel).AsGodotObject());
 
     public new static class MethodName
     {

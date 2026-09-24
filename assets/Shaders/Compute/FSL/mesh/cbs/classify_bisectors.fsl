@@ -1,25 +1,28 @@
 #include "bisector_defs.fsl"
 
+uniform buffer["ClassificationTarget"] {
+	u32 triangle_size;
+};
+
 #define SPLIT_THRESHOLD 24
 #define MERGE_THRESHOLD 14
 
-layout(std430) buffer CameraBuffer {
+uniform buffer["CameraBuffer"] cam {
 	f32x3 camera_pos;
-	f32 proj_scale;
-} cam;
+	f32 _padding1;
+	f32x3 view_vector;
+	f32 _padding2;
+	f32x4x4 modelToView;
+	f32x2 screen_size;
+};
 
-
-kernel[1, 1, 1] updateCamera(f32 cam_x, f32 cam_y, f32 cam_z, f32 proj_scale) {
-	cam.camera_pos = f32x3(cam_x, cam_y, cam_z);
-	cam.proj_scale = proj_scale;
-}
-
-i8 command_select(i32 b_index) {
-	i32 b_depth = load_depth(b_index);
-	f32x3x3 verts = bisector_vertices(b_index);
-	f32 edge = distance(verts[1], verts[0]);
-    f32 dist = max(distance((verts[0]+verts[1]+verts[2]) / 3.0, cam.camera_pos), 0.001);
-    f32 projected = edge * cam.proj_scale / dist; 
+i8 command_select_worldspace(i32 b_depth, f32x3 v0, f32x3 v1, f32x3 v2, f32x3 vp) {
+	f32 edge = distance(v1, v0);
+	f32 edge_parent = distance(v1, v0);
+	f32x3 dist_0_1 = v0+v1;
+	f32 dist = max(distance((dist_0_1+v2) / 3.0, cam.camera_pos), 0.001);
+	f32 dist_parent = max(distance((dist_0_1+vp) / 3.0, cam.camera_pos), 0.001);
+	f32 projected = edge * cam.proj_scale / dist; 
 
 	if ((projected > SPLIT_THRESHOLD) && (b_depth < (MAX_DEPTH_BIT - id_depth_offset))) {
 		return i8(1);	
@@ -27,6 +30,131 @@ i8 command_select(i32 b_index) {
 		return i8(-1);	
 	}
 	return i8(0);
+}
+
+f32x4 MatrixRow(f32x4x4 m, i32 i) {
+	return f32x4(m[0][i], m[1][i], m[2][i], m[3][i]);
+}
+
+// Screenspace code translated from the source code for the Benyoub & Dupuy 2024 CBTrees paper
+struct Plane
+{
+   f32x3 normal;
+   f32 d;
+};
+
+bool FrustumAABBIntersect(in Plane[6] frustumPlanes, f32x3 aabbMin, f32x3 aabbMax)
+{
+   f32x3 center = (aabbMax + aabbMin) * 0.5;
+   f32x3 extents = (aabbMax - aabbMin) * 0.5;
+   for (i32 i = 0; i < 4; i++) {
+	   Plane plane = frustumPlanes[i];
+       f32x3 normal_sign = sign(plane.normal);
+       f32x3 test_point = center + extents * normal_sign;
+
+       f32 dotProd = dot(test_point, plane.normal);
+       if (dotProd + plane.d < 0)
+            return false;
+   }
+   return true;
+}
+
+i8 command_select_screenspace(i32 b_depth, f32x3 v0, f32x3 v1, f32x3 v2, f32x3 vp) {
+	f32x3 triNormal = normalize(cross(v2 - v1, v0 - v1));
+	f32x3 triCenter = (v0 + v1 + v2) / 3.0;
+	f32x3 viewDir = normalize(triCenter - cam.camera_pos);
+	f32 FdotV = dot(viewDir, cam.view_vector);
+	f32 VdotN = dot(viewDir, triNormal);
+
+	// Here we don't use 0 as it introduces stability issues at grazing angles
+	if (FdotV < 0.0 && VdotN < -1e-3 && b_depth > 0)
+		return i8(-1);
+
+	// Compute the triangle's AABB
+	f32x3 aabbMin = f32x3(min(min(v0.x, v1.x), v2.x), min(min(v0.y, v1.y), v2.y), min(min(v0.z, v1.z), v2.z));
+	f32x3 aabbMax = f32x3(max(max(v0.x, v1.x), v2.x), max(max(v0.y, v1.y), v2.y), max(max(v0.z, v1.z), v2.z));
+    
+    f32x4 r0 = MatrixRow(cam.modelToView, 0);
+    f32x4 r1 = MatrixRow(cam.modelToView, 1); 
+    f32x4 r2 = MatrixRow(cam.modelToView, 2); 
+    f32x4 r3 = MatrixRow(cam.modelToView, 3);
+    f32x4[6] planes;
+    planes[0] = r3 + r0;  // left
+    planes[1] = r3 - r0;  // right
+    planes[2] = r3 + r1;  // bottom
+    planes[3] = r3 - r1;  // top
+    planes[4] = r3 + r2;  // near
+    planes[5] = r3 - r2;  // far
+    
+    Plane[6] frustum_planes;
+    for (i32 i = 0; i < 6; i++) {
+		frustum_planes[i] = Plane(planes[i].xyz, planes[i].w);	
+	}
+
+	// First we do a frustum culling pass
+	if (!FrustumAABBIntersect(frustum_planes, aabbMin, aabbMax) && b_depth > 0)	
+		return i8(-1);
+	
+	// Project the points on screen
+	f32x4 p0P = cam.modelToView * f32x4(v0, 1.0);
+	p0P.xy = p0P.xy / p0P.w;
+	p0P.xy = (p0P.xy * 0.5 + 0.5);
+
+	f32x4 p1P = cam.modelToView * f32x4(v1, 1.0);
+	p1P.xy = p1P.xy / p1P.w;
+	p1P.xy = (p1P.xy * 0.5 + 0.5);
+
+	f32x4 p2P = cam.modelToView * f32x4(v2, 1.0);
+	p2P.xy = p2P.xy / p2P.w;
+	p2P.xy = (p2P.xy * 0.5 + 0.5);
+
+	// 2D area of the triangle
+	// here we didn't reverse the sign of the y coordinate at projection time, but we simply adapted the area evaluation
+	// The same way we don't multiply by the screen size before, but after which is equivalent
+	f32 area = 0.5 * abs(p0P.x * (p2P.y - p1P.y) + p1P.x * (p0P.y - p2P.y) + p2P.x * (p1P.y - p0P.y));
+	area *= cam.screen_size.x * cam.screen_size.y;
+
+	// We over estimate the area at grazing angles
+	f32 areaOverestimation = mix(2.0, 1.0, pow(abs(VdotN), 0.2));
+	area *= areaOverestimation;
+
+	u32 max_subdiv_depth = MAX_DEPTH_BIT - id_depth_offset;
+	// If the triangle's area is bigger than the target size and the depth is not the maximal depth, subdivide
+	if (triangle_size.x < area && b_depth < max_subdiv_depth)
+	{
+		// If the area is really big, put it in high priority.
+		return i8(1);
+	}
+	else if ((triangle_size.x * 0.5 > area || b_depth > max_subdiv_depth) && b_depth > 0)
+	{
+		// Transform the parent's point
+		f32x4 p3P = cam.modelToView * f32x4(vp, 1.0);
+		p3P.xy = p3P.xy / p3P.w;
+		p3P.xy = (p3P.xy * 0.5 + 0.5);
+
+		// Evaluate the parent area
+		f32 areaParent = 0.5 * abs(p0P.x * (p3P.y - p1P.y) + p1P.x * (p0P.y - p3P.y) + p3P.x * (p1P.y - p0P.y));
+		areaParent *= cam.screen_size.x * cam.screen_size.y;
+		areaParent *= areaOverestimation;
+
+		// If the depth is too high (max depth changed) or the area is too large
+		return ((triangle_size.x >= areaParent ) || (b_depth > max_subdiv_depth)) ? i8(-1) : i8(0);
+	}
+	return i8(0);
+}
+
+i8 command_select(i32 b_index) {
+	u64 b_id = bisector_ids[b_index];
+	i32 b_depth = get_depth(b_id);
+	i32x4 indices = bisector_indices[b_index];
+	f32x3 v0 = vertex_to_f32x3(vertex_buffer.data[indices[0]]);
+	f32x3 v1 = vertex_to_f32x3(vertex_buffer.data[indices[1]]);
+	f32x3 v2 = vertex_to_f32x3(vertex_buffer.data[indices[2]]);
+	f32x3 vp = f32x3(0);
+	if (b_depth > 0) {
+		vp = vertex_to_f32x3(vertex_buffer.data[indices[3]]);
+	}
+	return command_select_screenspace(b_depth, v0, v1, v2, vp);
 }
 
 

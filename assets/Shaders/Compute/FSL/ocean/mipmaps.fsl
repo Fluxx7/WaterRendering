@@ -1,5 +1,5 @@
-layout(rgba16f) uniform image2DArray mipSource;
-layout(rgba16f) uniform image2DArray mipDest;
+uniform image2DArray<f16x4> mipSource;
+uniform image2DArray<f16x4> mipDest;
 
 kernel[16, 16, 1] genMipmaps(g_id : GlobalInvocationID, u32 destSize) {
 	if (g_id.x >= destSize || g_id.y >= destSize) {

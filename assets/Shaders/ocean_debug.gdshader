@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode world_vertex_coords, shadows_disabled, specular_occlusion_disabled;
+render_mode shadows_disabled, specular_occlusion_disabled;
 #include "brdf_ocean.gdshaderinc"
 global uniform vec3 camera_coords;
 
@@ -29,17 +29,15 @@ varying float v_displacement;
 varying vec3 world_pos;
 
 void vertex() {
-	vec3 vertex_displacement = vec3(0);
+	VertexOut v_data = ocean_vertex(cascade_count, CUSTOM0, tileLengths, heightMaps);
+	world_pos = v_data.vert_pos;
+	dist_factor = v_data.dist_factor;
+	v_displacement = v_data.v_displacement;
+	coords = v_data.coords;
+	UV = v_data.uv;
 	for (int cascade = 0; cascade < cascade_count; cascade++) {
-		coords[cascade] = VERTEX.xz / tileLengths[cascade];
-		vec3 sample = texture(heightMaps, vec3(coords[cascade], float(cascade))).xyz;
-		heightMapSamples[cascade] = sample;
-		vertex_displacement += sample;
+		heightMapSamples[cascade] = texture(heightMaps, vec3(v_data.coords[cascade], float(cascade))).xyz;
 	}
-	world_pos = VERTEX;
-	dist_factor = clamp(exp(-(length(VERTEX.xz - CAMERA_POSITION_WORLD.xz) - cutoff_dist)*cutoff_strength), 0.05, 1.0);
-	v_displacement = vertex_displacement.y;
-	VERTEX += vertex_displacement * vec3(1.0, dist_factor, 1.0);
 }
 
 varying vec2 v_derivatives;

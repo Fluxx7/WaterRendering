@@ -23,6 +23,8 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 	private bool _simulate = true;
 	private SpinBox layerSelector = new();
 	private SpinBox mipSelector = new();
+	private FSLFile oceanVertexFile = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/ocean/ocean_vertex.fsl");
+	private ComputeKernel oceanVertex;
 	private FastWaterController waterController;
 
 	public struct OceanVisualParameters {
@@ -139,6 +141,20 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 	private float _currentSeed;
 	private float _time;
 	private Dictionary<StringName, ShaderMaterial> _debugRectShaderMats = new();
+
+	public bool UpdateOceanMesh = true;
+
+	private enum OceanShader {
+		Standard,
+		Debug,
+		Wireframe
+	}
+
+	private OceanShader currShader = OceanShader.Standard;
+	private Shader standardShader = ResourceLoader.Load<Shader>("res://assets/Shaders/ocean.gdshader");
+	private Shader debugShader = ResourceLoader.Load<Shader>("res://assets/Shaders/ocean_debug.gdshader");
+	private Shader wireframeShader = ResourceLoader.Load<Shader>("res://assets/Shaders/ocean_wireframe.gdshader");
+	
 	
 	private void Simulate(bool simulate) {
 		_simulate = simulate;
@@ -166,26 +182,13 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		}
 
 	}
-	
-	public override void _Ready() {
-		if (Engine.IsEditorHint()) {
-			_simulate = false;
-		}
-		
 
-		_debugTexShader = GD.Load<Shader>("res://assets/Shaders/debug_texture.gdshader");
-		_shader = new ShaderMaterial();
-		_shader.SetShader(GD.Load<Shader>("res://assets/Shaders/ocean.gdshader"));
-		
-		waterController = GetNode<FastWaterController>("WaterController");
-		waterController.TextureRidUpdated += OnWaterControllerTextureUpdate;
-		waterController.CascadeCountChanged += cascades => {
-			layerSelector.MaxValue = cascades - 1;
-			_shader?.SetShaderParameter("cascade_count", cascades);
-		};
-		waterController.TileLengthsChanged += lengths => _shader?.SetShaderParameter("tileLengths", lengths);
-		waterController.PostTextures();
-		
+	private void UpdateMesh() {
+		if (UpdateOceanMesh) UpdateCBTrees();
+		else RedisplaceVerts();
+	}
+	
+	private void SetShaderParameters() {
 		_shader.SetShaderParameter("water_scatter_color", ScatterColor);
 		_shader.SetShaderParameter("air_bubble_color", DeepWaterColor);
 		_shader.SetShaderParameter("height_scale", HeightScale);
@@ -197,6 +200,36 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		_shader.SetShaderParameter("cascade_count", waterController.NumCascades);
 		_shader.SetShaderParameter("cascade_foam_weights", new Array<float>{1.0f, 1.0f, 1.0f, 1.0f});
 		_shader.SetShaderParameter("foamDetailTexture", GD.Load<Texture2D>("res://assets/Textures/foam-texture-2k/foam-texture-2d_displacement.png"));
+	}
+	public override void _Ready() {
+		if (Engine.IsEditorHint()) {
+			_simulate = false;
+		}
+
+		Update = false;
+		oceanVertex = oceanVertexFile.GetKernel("oceanVertex");
+		oceanVertex.GetUniformBuffer("VertexParams").SetBuffer(new Dictionary<StringName, Variant> {
+			{"cutoff_params", new Vector4(500f, 0.0005f, 0f, 0f)}
+		});
+		EnableCustom0Buffer(oceanVertex.GetVertexBuffer("UVBuffer"));
+		VertexKernel = oceanVertex;
+		
+		_debugTexShader = GD.Load<Shader>("res://assets/Shaders/debug_texture.gdshader");
+		_shader = new ShaderMaterial();
+		_shader.SetShader(standardShader);
+		
+		waterController = GetNode<FastWaterController>("WaterController");
+		waterController.TextureRidUpdated += OnWaterControllerTextureUpdate;
+		waterController.CascadeCountChanged += cascades => {
+			layerSelector.MaxValue = cascades - 1;
+			_shader?.SetShaderParameter("cascade_count", cascades);
+		};
+		waterController.TileLengthsChanged += lengths => _shader?.SetShaderParameter("tileLengths", lengths);
+		waterController.BindVertexUpdateShader(oceanVertex);
+		waterController.SpectrumTexturesReady += UpdateMesh;
+		waterController.PostTextures();
+		
+		SetShaderParameters();
 		SurfaceMaterial = _shader;
 		layerSelector.MaxValue = waterController.NumCascades - 1;
 		
@@ -266,6 +299,10 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		mainContainer.AddChild(newRect);
 		return mainContainer;
 	}
+
+	private void UpdateCurrentShader() {
+		
+	}
 	
 	private void InitDebugWindow() {
 		var canvasLayer = new CanvasLayer();
@@ -300,10 +337,30 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 
 		var newButton = new OptionButton();
 		newButton.AddItem("Off");
+		newButton.AddItem("Wireframe");
 		newButton.AddItem("Displacement");
 		newButton.AddItem("Gradients");
 		newButton.Selected = 0;
-		newButton.ItemSelected += index => _shader?.SetShaderParameter("debugRender", index);
+		newButton.ItemSelected += index => {
+			switch (index) {
+				case 0:
+					currShader = OceanShader.Standard;
+					_shader.SetShader(standardShader);
+					SetShaderParameters();
+					break;
+				case 1:
+					currShader = OceanShader.Wireframe;
+					_shader.SetShader(wireframeShader);
+					SetShaderParameters();
+					break;
+				default:
+					currShader = OceanShader.Debug;
+					_shader.SetShader(debugShader);
+					SetShaderParameters();
+					_shader?.SetShaderParameter("debugRender", index);
+					break;
+			}
+		};
 		
 		newBox.AddChild(newButton);
 		var vBox = new HBoxContainer();
@@ -327,6 +384,25 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		}; 
 		
 		newBox.AddChild(layerSelector);
+		vBox.AddChild(newBox);
+		
+		newBox = new HBoxContainer();
+		newLabel = new Label();
+		newLabel.Text = "Update Mesh";
+		newBox.AddChild(newLabel);
+		var checkBox = new CheckBox();
+		checkBox.ButtonPressed = true;
+		checkBox.Toggled += (bool value) => UpdateOceanMesh = value;
+		newBox.AddChild(checkBox);
+		
+		vBox.AddChild(newBox);
+		
+		newBox = new HBoxContainer();
+		var resetMeshButton = new Button();
+		resetMeshButton.Text = "Reset Mesh";
+		resetMeshButton.Pressed += () => rebuildQueued = true;
+		newBox.AddChild(resetMeshButton);
+		
 		vBox.AddChild(newBox);
 		
 		newBox = new HBoxContainer();
@@ -469,21 +545,27 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		{
 			var lightingLabel = new Label();
 			lightingLabel.Text = "Lighting Controls";
-			Func<string, string, Button> makeButton = (label, uniform_name) => {
+			Func<string, string, bool, Button> makeButton = (label, uniform_name, needs_debug_shader) => {
 				var newButton = new Button();
 				newButton.Text = label;
 				newButton.ToggleMode = true;
 				newButton.ButtonPressed = true;
 				newButton.Toggled += (pressed) => {
+					if (currShader == OceanShader.Standard && needs_debug_shader) {
+						currShader = OceanShader.Debug;
+						_shader.SetShader(debugShader);
+						SetShaderParameters();
+					}
 					_shader.SetShaderParameter(uniform_name, pressed);
+					
 				};
 				return newButton;
 			};
 
-			Button diffuseButton = makeButton("Diffuse", "renderDiffuse");
-			Button specularButton = makeButton("Specular", "renderSpecular");
-			Button reflectionsButton = makeButton("Reflections", "renderReflections");
-			Button foamButton = makeButton("Foam", "renderFoam");
+			Button diffuseButton = makeButton("Diffuse", "renderDiffuse", true);
+			Button specularButton = makeButton("Specular", "renderSpecular", true);
+			Button reflectionsButton = makeButton("Reflections", "renderReflections", true);
+			Button foamButton = makeButton("Foam", "renderFoam", false);
 			
 			lightingControlsBox.AddChild(lightingLabel);
 			lightingControlsBox.AddChild(diffuseButton);

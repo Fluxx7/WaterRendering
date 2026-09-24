@@ -1,0 +1,20 @@
+#include "../mesh_common.fsl"
+
+struct HalfEdge {
+    i32 twin;
+    i32 next;
+    i32 prev;
+    i32 vert;
+    i32 edge;
+    i32 face;
+};
+
+buffer["HalfEdgeBuffer"] {
+	u32 num_half_edges;
+	u32 num_he_verts;
+    HalfEdge[] half_edges;
+};
+
+buffer["HalfEdgeVertexBuffer"] : godot_vertex {
+    Vertex[] he_verts;
+};

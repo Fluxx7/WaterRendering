@@ -9,23 +9,23 @@ const f32 water_density = 1000.0;
 const u32 halfN: specialization_constant = 128;
 const u32 N = halfN * 2;
 
-layout(rgba32f) uniform image2DArray spectrumMap;
-layout(rgba32f) uniform image2DArray baseSpectrum;
-layout(rgba32f) uniform image2DArray spectrumTexture;
+uniform image2DArray<f32x4> spectrumMap;
+uniform image2DArray<f32x4> baseSpectrum;
+uniform image2DArray<f32x4> spectrumTexture;
 
 
-layout(std430) buffer oceanParams {
+buffer["oceanParams"] paramsBuffer{
 	u32 numCascades;
 	f32 windSpeed;
 	f32 windDirection;
 	f32 depth;
 	f32 fetch;
 	f32x4[] cascadeParams; // [tile length, whitecap, foam amount, unused]
-} paramsBuffer;
+};
 
-layout(std430) buffer spectrumDataBuffer {
+buffer["spectrumDataBuffer"] spectrumData {
 	f32 omega_peak;
-} spectrumData;
+};
 
 f32 dispersion_relation(f32 k_mag, f32 depth, out f32 tan_k) {
     tan_k = tanh(k_mag * depth);

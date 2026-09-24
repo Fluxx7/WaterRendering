@@ -10,10 +10,10 @@ kernel[1, 1, 1] prepPipeline() {
 	simplifyingBisectors.count = 0;
 	propagatingBisectors.count_split = 0;
 	propagatingBisectors.count_merge = 0;
-	modifiedBisectors.count = 0;
 	
     allocations = 0;
     num_bisectors = cbtree.data[1];
+    num_vertices = num_face_verts;
     available_memory = i32(cbt_capacity - num_bisectors);
     indexed_draw_command_buffer.index_count = 0;
 	indexed_draw_command_buffer.instance_count = 1;
@@ -127,6 +127,7 @@ void split_bisector(i32 b_index) {
 void neighbor_shared_edges(i32 b_index, i32 n_index, out i32 even_edge, out i32 odd_edge) {
 	Bisector neighbor = bisectors[n_index];
 	Neighbors n_neighbors = neighbors[n_index];
+	
 	if (neighbor.subdiv_pattern == 1) {
 		even_edge = neighbor.mem_slots[0];
 		odd_edge = n_index;
@@ -152,10 +153,11 @@ void neighbor_shared_edges(i32 b_index, i32 n_index, out i32 even_edge, out i32 
 
 void bisect_vertex(i32 b_index, i32 new_index) {
 	i32x4 parent_verts = bisector_indices[b_index];
-	f32x3 v0 = vertex_to_f32x3(vertex_buffer.data[parent_verts.x]);
-	f32x3 v1 = vertex_to_f32x3(vertex_buffer.data[parent_verts.y]);
+	f32x3 v0 = vertex_to_f32x3(internal_vertices[parent_verts.x]);
+	f32x3 v1 = vertex_to_f32x3(internal_vertices[parent_verts.y]);
 	f32x3 new_vert = (v0 + v1) / 2;
-	vertex_buffer.data[new_index] = f32x3_to_vertex(new_vert);
+	internal_vertices[new_index] = f32x3_to_vertex(new_vert);
+	set_vertex_leaf(new_index, 1);
 }
 
 void update_vertex_indices(i32 even_index, i32 odd_index, i32 vert_index) {
@@ -446,6 +448,7 @@ void simplify_pair(i32 even_index, i32 odd_index) {
 	bisectors[odd_index] = odd;
 	
 	set_leaf(odd_index, 0);
+	set_vertex_leaf(odd_index, 0);
 }
 
 /*
@@ -589,7 +592,7 @@ kernel[INDIRECT_KERNEL_SIZE, 1, 1] propagateSimplify(g_id : GlobalInvocationID) 
 	bisectors[b_index].problematic_neighbor = -1;
 }
 
-kernel[INDIRECT_KERNEL_SIZE, 1, 1] prepDraw(g_id : GlobalInvocationID) {
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] prepDraw(g_id : GlobalInvocationID, num_workgroups : NumWorkGroups, l_id : LocalInvocationID) {
 	if (g_id.x >= cbtree.data[1]) return;
 	i32 b_index = get_nth_high_bit(g_id.x);
 	if (bisector_ids[b_index] == 0) return;
@@ -599,4 +602,13 @@ kernel[INDIRECT_KERNEL_SIZE, 1, 1] prepDraw(g_id : GlobalInvocationID) {
     	b_indices = b_indices.xzy;
     }
 	index_buffer.data[slot / 3] = Index(b_indices.x, b_indices.y, b_indices.z);
+	if (get_vertex_leaf(b_index) == 1) {
+		u32 vert_slot = atomicAdd(num_vertices, 1);
+		vertex_indices[vert_slot] = b_index;
+	}
+	if (update_indirect_dispatch(l_id, num_workgroups)) {
+		vertex_dispatch.dims.x = update_dispatch_buffer(num_vertices);
+		vertex_dispatch.dims.y = 1;
+		vertex_dispatch.dims.z = 1;
+	}
 }

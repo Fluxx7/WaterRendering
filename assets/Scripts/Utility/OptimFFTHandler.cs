@@ -15,7 +15,7 @@ public partial class OptimFftHandler : RefCounted {
 	private FSLFile tessendorfShader = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/ocean/tess_funcs_optim.fsl");
 	private FSLFile fftShader = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/ocean/fft_optim.fsl");
 	private FSLFile mipShader = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/ocean/mipmaps.fsl");
-	private FSLTexture2DArray displacementTexture;
+	public FSLTexture2DArray displacementTexture;
 	private FSLTexture2DArray gradFoamTexture;
 	private ComputeGroup tessendorfFuncs;
 	private ComputeKernel twiddleGen;

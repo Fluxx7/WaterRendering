@@ -15,7 +15,7 @@ public partial class FSLRawResource : FSLResource
 
     public FSLRawResource() : this(ClassDB.Instantiate(GDClassName).AsGodotObject()) { }
 
-    public static FSLRawResource FromRid(Rid rid, RenderingDevice.UniformType uniformType) => (FSLRawResource)FSLResource.Wrap(ClassDB.ClassCallStatic(GDClassName, MethodName.FromRid, rid, (long)uniformType).AsGodotObject());
+    public static FSLRawResource FromRid(Rid rid, RenderingDevice.UniformType uniformType) => (FSLRawResource)FSLResourceFactory.Wrap(ClassDB.ClassCallStatic(GDClassName, MethodName.FromRid, rid, (long)uniformType).AsGodotObject());
 
     public void SetRid(Rid rid) => Inner.Call(MethodName.SetRid, rid);
 

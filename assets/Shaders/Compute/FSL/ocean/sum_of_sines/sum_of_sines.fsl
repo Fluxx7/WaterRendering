@@ -1,4 +1,4 @@
-layout(rgba16f) uniform image2D waveTexture;
+uniform image2D<f16x4> waveTexture;
 
 kernel[2, 1, 1] textureGen(id : GlobalInvocationID, i32 waveCount, f32 baseSeed, f32 baseAmplitude, f32 baseFrequency, f32 lacunarity, f32 gain) {
     if (id.x >= waveCount) return;

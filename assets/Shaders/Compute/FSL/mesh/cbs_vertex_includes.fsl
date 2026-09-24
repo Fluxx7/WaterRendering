@@ -1,0 +1,27 @@
+struct Vertex {
+	f32 x;
+	f32 y;
+	f32 z;	
+};
+
+buffer["VertexCountBuffer"] {
+	u32 num_vertices;
+	u32[] vertex_indices;
+};
+
+buffer["VertexInputBuffer"] : godot_vertex {
+	Vertex[] input_vertices;
+};
+
+buffer["VertexOutputBuffer"] : godot_vertex {
+	Vertex[] output_vertices;
+};
+
+uniform buffer["CameraBuffer"] cam {
+	f32x3 camera_pos;
+	f32 _padding1;
+	f32x3 view_vector;
+	f32 _padding2;
+	f32x4x4 modelToView;
+	f32x2 screen_size;
+};

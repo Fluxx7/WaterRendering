@@ -23,23 +23,10 @@ Build Godot from source (`4.8`, `.NET`/Mono enabled) with these merged:
 | PR | Title | Why it's needed |
 | --- | --- | --- |
 | [117836](https://github.com/godotengine/godot/pull/117836) | Implement MeshRD for RenderingDevice buffers | The ocean mesh is built in compute and handed to the renderer as `RenderingDevice` buffers; without it there is no way to draw the generated mesh. |
-| [121392](https://github.com/godotengine/godot/pull/121392) | metal: fix various issues with Metal rendering; improve presentation | Correct rendering and presentation on Metal. |
-| [121937](https://github.com/godotengine/godot/pull/121937) | Add ClassDB binding for `TEXTURE_SLICE_2D_ARRAY` | The cascaded displacement/derivative textures are 2D arrays and need the slice view exposed to scripting. |
 | [122071](https://github.com/godotengine/godot/pull/122071) | Metal: use specialization constants that set the compute workgroup size | The FFT and spectrum kernels set their workgroup size via specialization constants. On stock Metal these dispatch **zero invocations, silently** — no error, just an empty result. |
 
-All four are open as of this writing, so there is no release to download; you
+Both are open as of this writing, so there is no release to download; you
 need your own build.
-
-### Runtime environment (Metal / macOS)
-
-Indirect dispatch reads argument buffers written by an earlier compute pass. Set:
-
-```sh
-export GODOT_MTL_FORCE_BARRIERS=1
-```
-
-Without it the indirect arguments are read back stale (zeros) and the dependent
-dispatches do nothing.
 
 ### .NET
 

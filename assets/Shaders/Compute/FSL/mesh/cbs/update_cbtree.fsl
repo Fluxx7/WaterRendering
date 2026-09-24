@@ -25,5 +25,6 @@ kernel[32, 1, 1] sumReduction(g_id : GlobalInvocationID, u32 d, u32 max_threads)
 	cbtree.data[k] = cbtree.data[k << 1] + cbtree.data[(k << 1) + 1];
 	if (max_threads == 1 && g_id.x == 0) {
 		indirect_dispatch.d0.x = update_dispatch_buffer(cbtree.data[1]);	
+		
 	}
 }
