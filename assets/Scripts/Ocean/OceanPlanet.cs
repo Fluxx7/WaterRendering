@@ -9,7 +9,7 @@ using Range = Godot.Range;
 namespace GodotWaterRendering.assets.Scripts.Water;
 
 [GlobalClass]
-public partial class SpectrumWater : DynamicMeshInstance3D {
+public partial class OceanPlanet : DynamicMeshInstance3D {
 	private ShaderMaterial _shader;
 	private Shader _debugTexShader;
 	private uint _prevSubdivide;
@@ -206,9 +206,12 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		}
 
 		Update = false;
-		oceanVertex = oceanVertexFile.GetKernel("oceanVertex");
+		oceanVertex = oceanVertexFile.GetKernel("oceanVertexPlanet");
 		oceanVertex.GetUniformBuffer("VertexParams").SetBuffer(new Dictionary<StringName, Variant> {
 			{"cutoff_params", new Vector4(500f, 0.0005f, 0f, 0f)}
+		});
+		oceanVertex.GetUniformBuffer("PlanetInfoBuffer").SetBuffer(new Dictionary<StringName, Variant> {
+			{"planet_radius", SphereRadius}
 		});
 		EnableCustom0Buffer(oceanVertex.GetVertexBuffer("UVBuffer"));
 		VertexKernel = oceanVertex;

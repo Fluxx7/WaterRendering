@@ -137,8 +137,8 @@ public partial class PlanetCamera : Camera3D {
 	/// <summary>Whether the near and far planes are refitted from altitude each frame.</summary>
 	[Export] public bool AutoFrustum = true;
 
-	/// <summary>Near plane as a fraction of altitude, bounded below by <see cref="MinNear"/> and
-	/// above by the <see cref="MaxDepthRatio"/> cap.</summary>
+	/// <summary>Near plane as a fraction of altitude, bounded below by <see cref="MinNear"/> and,
+	/// unless <see cref="UnboundedFar"/> is on, raised by the <see cref="MaxDepthRatio"/> cap.</summary>
 	[Export] public float NearPerAltitude = 0.002f;
 
 	[Export] public float MinNear = 0.05f;
@@ -151,6 +151,19 @@ public partial class PlanetCamera : Camera3D {
 	/// collapses: (far+near)/(far-near) rounds to exactly 1.0, every fragment resolves to the same
 	/// depth, and the scene disappears. Kept well under that for depth precision as well.</summary>
 	[Export] public float MaxDepthRatio = 1e6f;
+
+	/// <summary>Holds the far plane at <see cref="UnboundedFarDistance"/> and drops the
+	/// <see cref="MaxDepthRatio"/> cap, leaving near to track altitude alone. Needs an engine built
+	/// with godotengine/godot#99986, which derives near and far from stored frustum planes instead
+	/// of the projection matrix; on a stock build a far this large reproduces the depth collapse
+	/// the ratio cap exists to prevent. Forward+ only - Mobile and Compatibility keep a 24-bit
+	/// depth buffer that reverse-Z does not help.</summary>
+	[Export] public bool UnboundedFar;
+
+	/// <summary>Far plane while <see cref="UnboundedFar"/> is on. Kept below 1e20 by default:
+	/// raycast occlusion culling drops objects beyond that unless godotengine/godot#103798 is
+	/// also in the build.</summary>
+	[Export] public float UnboundedFarDistance = 1e19f;
 
 	[ExportGroup("Keys")]
 	[Export] public Key OrbitToggleKey = Key.Tab;
@@ -526,6 +539,15 @@ public partial class PlanetCamera : Camera3D {
 		float far = Mathf.Max((float)(horizon * 1.1), MinFar);
 
 		float near = Mathf.Max((float)altitude * NearPerAltitude, MinNear);
+
+		if (UnboundedFar) {
+			// Reverse-Z float depth spends its precision near the camera, so near alone decides
+			// how well the ground resolves; the ratio cap would drag near out to far / 1e6.
+			Near = near;
+			Far = Mathf.Max(UnboundedFarDistance, near * 2f);
+			return;
+		}
+
 		near = Mathf.Max(near, far / Mathf.Max(MaxDepthRatio, 1f));
 
 		Near = near;

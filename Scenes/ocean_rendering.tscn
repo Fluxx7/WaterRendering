@@ -105,7 +105,7 @@ transform = Transform3D(1, 0, 0, 0, -0.99026805, 0.13917318, 0, -0.13917318, -0.
 light_color = Color(1, 0.98483336, 0.93, 1)
 light_energy = 4.043
 
-[node name="Ocean" type="GeometryInstance3D" parent="." unique_id=464920326 node_paths=PackedStringArray("Camera", "debugWindow", "debugWindowToggle", "visualsWindow", "visualsWindowToggle")]
+[node name="Ocean" type="GeometryInstance3D" parent="." unique_id=464920326 node_paths=PackedStringArray("debugWindow", "debugWindowToggle", "visualsWindow", "visualsWindowToggle")]
 unique_name_in_owner = false
 process_mode = 0
 process_priority = 0
@@ -139,12 +139,11 @@ visibility_range_end = 0.0
 visibility_range_end_margin = 0.0
 visibility_range_fade_mode = 0
 script = ExtResource("3_3df1w")
-Camera = NodePath("../Camera3D")
 debugWindow = NodePath("../Debug Controls")
 debugWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Debug View")
 visualsWindow = NodePath("../Visual Controls")
 visualsWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
-Size = Vector2(22584608, 22584608)
+PlaneSize = Vector2(22583000, 22583000)
 MaxDepth = 18
 BaseSubdivisions = 4
 metadata/_custom_type_script = "uid://dflvs4xa2855f"

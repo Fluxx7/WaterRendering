@@ -3,6 +3,10 @@
 [ext_resource type="Script" uid="uid://2i5jb0ecmgdm" path="res://assets/Scripts/Utility/PlanetCamera.cs" id="1_irlwx"]
 [ext_resource type="Script" uid="uid://btptuvdnd2xtk" path="res://assets/Scripts/Mesh/CBTTestMesh.cs" id="2_c4s6b"]
 [ext_resource type="Shader" uid="uid://qif3o50i1xb7" path="res://Scenes/test_mesh.gdshader" id="3_irlwx"]
+[ext_resource type="Shader" uid="uid://djcpu03u1yvx5" path="res://assets/Shaders/space_sky.gdshader" id="4_cqv0n"]
+[ext_resource type="CompressedCubemap" uid="uid://d1r0l2acbe31n" path="res://assets/Textures/space_skybox/space_skybox_3x2.png" id="5_cvkex"]
+[ext_resource type="Script" uid="uid://lvs0bwu86cmm" path="res://assets/Scripts/Ocean/OceanPlanet.cs" id="6_5d5fy"]
+[ext_resource type="Script" uid="uid://pcg032ja3p6u" path="res://assets/Scripts/Ocean/FastWaterController.cs" id="7_h38u3"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_w2yos"]
 render_priority = 0
@@ -11,25 +15,44 @@ shader_parameter/display_mode = 1
 shader_parameter/color_saturation = 0.6
 shader_parameter/color_value = 0.9
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_5d5fy"]
+shader = ExtResource("4_cqv0n")
+shader_parameter/sky_texture = ExtResource("5_cvkex")
+shader_parameter/exposure = 1.0
+shader_parameter/rotation_degrees = Vector3(0, 0, 0)
+
+[sub_resource type="Sky" id="Sky_irlwx"]
+sky_material = SubResource("ShaderMaterial_5d5fy")
+
 [sub_resource type="Environment" id="Environment_7rdt1"]
-background_mode = 1
+background_mode = 2
+sky = SubResource("Sky_irlwx")
 ambient_light_energy = 0.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_w2yos"]
+shading_mode = 0
+albedo_color = Color(18.754, 18.892, 14.761, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_irlwx"]
+material = SubResource("StandardMaterial3D_w2yos")
+radius = 1000000.0
+height = 2000000.0
 
 [node name="CelestialBodyTesting" type="Node3D" unique_id=487021627]
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1831754564 node_paths=PackedStringArray("Planet")]
-transform = Transform3D(0.99965733, -0.0047703627, 0.025738612, 0, 0.98325497, 0.18223527, -0.026176946, -0.18217282, 0.982918, 108.129, 735.709, 7000000)
+transform = Transform3D(0.99965733, -0.0047703627, 0.025738612, 0, 0.98325497, 0.18223527, -0.026176946, -0.18217282, 0.982918, 108.129, 735.709, 700000)
 fov = 96.9
 near = 1.0
-far = 10000000.0
+far = 1e+19
 script = ExtResource("1_irlwx")
 Planet = NodePath("../DynamicMeshInstance3D")
 PlanetRadius = 600000.0
-FloatingOrigin = false
+UnboundedFar = true
 LevelToggleKey = 75
 FrameKey = 74
 
-[node name="DynamicMeshInstance3D" type="GeometryInstance3D" parent="." unique_id=758196131]
+[node name="DynamicMeshInstance3D" type="GeometryInstance3D" parent="." unique_id=758196131 node_paths=PackedStringArray("originCamera")]
 unique_name_in_owner = false
 process_mode = 0
 process_priority = 0
@@ -63,12 +86,13 @@ visibility_range_end = 0.0
 visibility_range_end_margin = 0.0
 visibility_range_fade_mode = 0
 script = ExtResource("2_c4s6b")
+originCamera = NodePath("../Camera3D")
 Mode = 0
 ToggleKey = 70
 PauseKey = 80
 UseVertexKernel = true
 renderCube = true
-Size = Vector2(1200000, 500)
+SphereRadius = 600000.0
 MaxDepth = 19
 SurfaceMaterial = SubResource("ShaderMaterial_w2yos")
 TriangleSize = 25
@@ -79,7 +103,56 @@ environment = SubResource("Environment_7rdt1")
 
 [node name="OmniLight3D" type="OmniLight3D" parent="." unique_id=686914757]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 80000000)
-light_color = Color(0.99391645, 1, 0.76890874, 1)
+light_color = Color(0.99215686, 1, 0.76862746, 1)
 light_energy = 15.471
 omni_range = 100000000.0
 omni_attenuation = 0.412
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="OmniLight3D" unique_id=1640215095]
+cast_shadow = 0
+mesh = SubResource("SphereMesh_irlwx")
+
+[node name="OceanPlanet" type="GeometryInstance3D" parent="." unique_id=1406993241]
+unique_name_in_owner = false
+process_mode = 0
+process_priority = 0
+process_physics_priority = 0
+process_thread_group = 0
+physics_interpolation_mode = 0
+auto_translate_mode = 0
+editor_description = ""
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+rotation_edit_mode = 0
+rotation_order = 2
+top_level = false
+visible = false
+visibility_parent = NodePath("")
+layers = 1
+sorting_offset = 0.0
+sorting_use_aabb_center = true
+material_override = null
+material_overlay = null
+transparency = 0.0
+cast_shadow = 1
+extra_cull_margin = 0.0
+custom_aabb = AABB(0, 0, 0, 0, 0, 0)
+lod_bias = 1.0
+ignore_occlusion_culling = false
+gi_mode = 1
+gi_lightmap_texel_scale = 1.0
+visibility_range_begin = 0.0
+visibility_range_begin_margin = 0.0
+visibility_range_end = 0.0
+visibility_range_end_margin = 0.0
+visibility_range_fade_mode = 0
+script = ExtResource("6_5d5fy")
+renderCube = true
+SphereRadius = 100000.0
+MaxDepth = 18
+metadata/_custom_type_script = "uid://lvs0bwu86cmm"
+
+[node name="WaterController" type="Node" parent="OceanPlanet" unique_id=1627059757]
+script = ExtResource("7_h38u3")
+_swell = 0.25
+NumCascades = 4
+TileLengths = Array[float]([2048.0, 370.0, 80.0, 30.0])

@@ -57,7 +57,8 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 
 	[Export(PropertyHint.Range, "1, 64,")] public uint UpdatesPerFrame = 1;
 
-	[Export] public Vector2 Size = new(500f, 500f);
+	[Export] public Vector2 PlaneSize = new(500f, 500f);
+	[Export] public float SphereRadius = 500f;
 	
 	[Export]
 	public uint MaxDepth {
@@ -511,16 +512,16 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
 		
 		cbtGroup.Dispatch("planeMeshHalfEdge", _baseSubdivisions, _baseSubdivisions, 1, new Dictionary<StringName, Variant> {
-			{"sizeX", Size.X},
-			{"sizeY", Size.Y},
+			{"sizeX", PlaneSize.X},
+			{"sizeY", PlaneSize.Y},
 			{ "edges_per_side", _baseSubdivisions}
 		});
 
 		meshAabb = Engine.IsEditorHint()
-			? new Aabb(new Vector3(-Size.X * 0.5f, -1f, -Size.Y * 0.5f),
-				new Vector3(Size.X, 1f, Size.Y))
-			: new Aabb(new Vector3(-Size.X * 0.5f, -1f, -Size.Y * 0.5f),
-				new Vector3(Size.X, 100f, Size.Y));
+			? new Aabb(new Vector3(-PlaneSize.X * 0.5f, -1f, -PlaneSize.Y * 0.5f),
+				new Vector3(PlaneSize.X, 1f, PlaneSize.Y))
+			: new Aabb(new Vector3(-PlaneSize.X * 0.5f, -1f, -PlaneSize.Y * 0.5f),
+				new Vector3(PlaneSize.X, 100f, PlaneSize.Y));
 	}
 	
 	private void BuildHalfEdgeCubeMesh() {
@@ -532,11 +533,11 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
 		
 		cbtGroup.Dispatch("cubeMeshHalfEdge", 6, 1, 1, new Dictionary<StringName, Variant> {
-			{"size", Size.X}
+			{"size", SphereRadius * 2f}
 		});
 
-		meshAabb = new Aabb(new Vector3(-Size.X * 0.5f, -Size.X * 0.5f, -Size.X * 0.5f),
-			new Vector3(Size.X, Size.X, Size.X));
+		meshAabb = new Aabb(new Vector3(-SphereRadius, -SphereRadius, -SphereRadius),
+			new Vector3(SphereRadius * 2f, SphereRadius * 2f, SphereRadius * 2f));
 	}
 	
 	private void BuildHalfEdgeIcosahedronMesh() {
@@ -549,8 +550,8 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
 		
 		cbtGroup.Dispatch("icosahedronMeshHalfEdge", _baseSubdivisions, _baseSubdivisions, 1, new Dictionary<StringName, Variant> {
-			{"sizeX", Size.X},
-			{"sizeY", Size.Y},
+			{"sizeX", PlaneSize.X},
+			{"sizeY", PlaneSize.Y},
 			{ "edges_per_side", _baseSubdivisions}
 		});
 	}

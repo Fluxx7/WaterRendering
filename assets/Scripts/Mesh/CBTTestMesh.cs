@@ -34,6 +34,7 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 	private FSLFile vertTestFile = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/mesh/cbs/vertex_test.fsl");
 	private ComputeKernel dummyVertKernel;
 	private DisplayMode _mode = DisplayMode.TriangleId;
+	[Export] public PlanetCamera originCamera;
 
 	[Export]
 	public DisplayMode Mode {
@@ -62,11 +63,19 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 
 	public override void _Ready() {
 		dummyVertKernel = vertTestFile.GetKernel("vertexTestSphere");
-		dummyVertKernel.GetStorageBuffer("SphereTestBuffer").SetBuffer(new Dictionary<StringName, Variant> {
-			{"sphere_radius", Size.X * 0.5f}
+		dummyVertKernel.GetUniformBuffer("SphereTestBuffer").SetBuffer(new Dictionary<StringName, Variant> {
+			{"origin", new Vector3(0, 0, 0)},
+			{"sphere_radius", SphereRadius}
 		});
 		if (useVertexKernel) VertexKernel = dummyVertKernel;
 		ApplyMode();
+		if (originCamera != null) originCamera.OriginRebased += (origin, delta) => {
+			dummyVertKernel.GetUniformBuffer("SphereTestBuffer").SetBuffer(new Dictionary<StringName, Variant> {
+				{"origin", origin},
+				{"sphere_radius", SphereRadius}
+			});
+			CustomAabb = new Aabb(SphereRadius - origin.X, SphereRadius - origin.Y, SphereRadius - origin.Z, SphereRadius * 2f, SphereRadius * 2f, SphereRadius * 2f);
+		};
 	}
 
 	public override void _UnhandledKeyInput(InputEvent @event) {

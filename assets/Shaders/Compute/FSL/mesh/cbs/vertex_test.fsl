@@ -8,7 +8,8 @@ kernel[32, 1, 1] vertexTest(g_id : GlobalInvocationID) {
 	output_vertices[vert_index] = v_vert;	
 }
 
-buffer["SphereTestBuffer"] {
+uniform buffer["SphereTestBuffer"] {
+	f32x3 origin;
 	f32 sphere_radius;	
 };
 
@@ -20,5 +21,6 @@ kernel[32, 1, 1] vertexTestSphere(g_id : GlobalInvocationID) {
 	f32x3 vert = f32x3(v_vert.x, v_vert.y, v_vert.z);
 	f32 dist = distance(vert, f32x3(0));
 	vert *= sphere_radius / dist;
+	vert -= origin;
 	output_vertices[vert_index] = Vertex(vert.x, vert.y, vert.z);	
 }

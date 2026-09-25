@@ -30,16 +30,16 @@ kernel[32, 1, 1] oceanVertex(g_id : GlobalInvocationID) {
 	output_vertices[vert_index] = Vertex(vert.x, vert.y, vert.z);
 }
 
-buffer["SphereTestBuffer"] {
-	f32 sphere_radius;	
+uniform buffer["PlanetInfoBuffer"] {
+	f32 planet_radius;	
 };
 
-kernel[32, 1, 1] oceanVertexSphere(g_id : GlobalInvocationID) {
+kernel[32, 1, 1] oceanVertexPlanet(g_id : GlobalInvocationID) {
 	if (g_id.x >= num_vertices) return;
 	u32 vert_index = vertex_indices[g_id.x];
 	Vertex v_vert = input_vertices[vert_index];
 	f32x3 vert = f32x3(v_vert.x, v_vert.y, v_vert.z);
-	
+	f32 dist = distance(vert, f32x3(0));
 	f32x3 vertex_displacement = f32x3(0);
 	for (i32 cascade = 0; cascade < paramsBuffer.numCascades; cascade++) {
 		f32 tile_length = paramsBuffer.cascadeParams[cascade].x;
@@ -49,6 +49,7 @@ kernel[32, 1, 1] oceanVertexSphere(g_id : GlobalInvocationID) {
 	}
 	f32 dist_factor = clamp(exp(-(length(vert.xz - cam.camera_pos.xz) - cutoff_params.x)*cutoff_params.y), 0.05, 1.0);
 	vertex_attrs[vert_index] = f32x4(vert.xz, vertex_displacement.y, dist_factor);
+	vert *= planet_radius / dist;
 	vert += vertex_displacement * f32x3(1.0, dist_factor, 1.0);
 	output_vertices[vert_index] = Vertex(vert.x, vert.y, vert.z);
 }
