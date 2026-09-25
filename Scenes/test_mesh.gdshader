@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled, wireframe;
+//render_mode wireframe;
 
 // 0 = flat facet shading, 1 = per-vertex id field, 2 = per-triangle id
 uniform int display_mode : hint_range(0, 2) = 0;

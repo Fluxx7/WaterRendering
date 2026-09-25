@@ -76,3 +76,146 @@ kernel[16, 16, 1] planeMeshHalfEdge(_g_id : GlobalInvocationID, f32 sizeX, f32 s
 		num_half_edges = 4 * num_faces;
 	}
 }
+
+kernel[6, 1, 1] cubeMeshHalfEdge(_g_id : GlobalInvocationID, f32 size) {
+	i32x3 g_id = i32x3(_g_id);
+	if (g_id.x >= 6) return;
+
+	i32 face = g_id.x;
+	
+	// order: [top-left top-right bottom-right bottom-left]
+	i32[4] verts;
+	// order: [top right bottom left]
+	i32[4] edges;
+	i32[4] twins;
+	
+	f32 half_size = size * 0.5;
+	if (face == 0) {
+		verts[0] = 0;
+		verts[1] = 1;
+		verts[2] = 2;	
+		verts[3] = 3;
+		
+		edges[0] = 0;
+		edges[1] = 1;
+		edges[2] = 2;
+		edges[3] = 3;
+		
+		twins[0] = 8; // 0
+		twins[1] = 12; // 1
+		twins[2] = 16; // 2
+		twins[3] = 4; // 3
+		
+		f32x3 v0 = f32x3(half_size, half_size, half_size);
+		f32x3 v1 = f32x3(-half_size, half_size, half_size);
+		f32x3 v2 = f32x3(-half_size, half_size, -half_size);
+		f32x3 v3 = f32x3(half_size, half_size, -half_size);
+		he_verts[0] = f32x3_to_vertex(v0);
+		he_verts[1] = f32x3_to_vertex(v1);
+		he_verts[2] = f32x3_to_vertex(v2);
+		he_verts[3] = f32x3_to_vertex(v3);
+	} else if (face == 1) {
+		verts[0] = 0;
+		verts[1] = 3;
+		verts[2] = 7;	
+		verts[3] = 4;
+		
+		edges[0] = 3;
+		edges[1] = 7;
+		edges[2] = 11;
+		edges[3] = 4;
+		
+		twins[0] = 3; // 4
+		twins[1] = 19; // 5
+		twins[2] = 20; // 6
+		twins[3] = 9; // 7
+	} else if (face == 2) {
+		verts[0] = 1;
+		verts[1] = 0;
+		verts[2] = 4;	
+		verts[3] = 5;
+		
+		edges[0] = 0;
+		edges[1] = 4;
+		edges[2] = 8;
+		edges[3] = 5;
+		
+		twins[0] = 0; // 8
+		twins[1] = 7; // 9
+		twins[2] = 23; // 10
+		twins[3] = 13; // 11
+	} else if (face == 3) {
+		verts[0] = 2;
+		verts[1] = 1;
+		verts[2] = 5;	
+		verts[3] = 6;
+		
+		edges[0] = 1;
+		edges[1] = 5;
+		edges[2] = 9;
+		edges[3] = 6;
+		
+		twins[0] = 1; // 12
+		twins[1] = 11; // 13
+		twins[2] = 22; // 14
+		twins[3] = 17; // 15
+	} else if (face == 4) {
+		verts[0] = 3;
+		verts[1] = 2;
+		verts[2] = 6;	
+		verts[3] = 7;
+		
+		edges[0] = 2;
+		edges[1] = 6;
+		edges[2] = 10;
+		edges[3] = 7;
+		
+		twins[0] = 2; // 16
+		twins[1] = 15; // 17
+		twins[2] = 21; // 18
+		twins[3] = 5; // 19
+	} else if (face == 5) {
+		verts[0] = 4;
+		verts[1] = 7;
+		verts[2] = 6;	
+		verts[3] = 5;
+		
+		edges[0] = 8;
+		edges[1] = 9;
+		edges[2] = 10;
+		edges[3] = 11;
+		
+		twins[0] = 6; // 20
+		twins[1] = 18; // 21
+		twins[2] = 14; // 22
+		twins[3] = 10; // 23
+		
+		f32x3 v4 = f32x3(half_size, -half_size, half_size);
+		f32x3 v5 = f32x3(-half_size, -half_size, half_size);
+		f32x3 v6 = f32x3(-half_size, -half_size, -half_size);
+		f32x3 v7 = f32x3(half_size, -half_size, -half_size);
+		he_verts[4] = f32x3_to_vertex(v4);
+		he_verts[5] = f32x3_to_vertex(v5);
+		he_verts[6] = f32x3_to_vertex(v6);
+		he_verts[7] = f32x3_to_vertex(v7);
+	}
+	
+	i32 start_id = 4 * face;
+	for (i32 i = 0; i < 4; i++) {
+		i32 curr_id = start_id + i;	
+		HalfEdge curr_he;
+		curr_he.face = face;
+		curr_he.edge = edges[i];
+		curr_he.vert = verts[i];
+		curr_he.twin = twins[i];
+		curr_he.next = i == 3 ? start_id : curr_id + 1;
+		curr_he.prev = i == 0 ? start_id + 3 : curr_id - 1;
+		half_edges[curr_id] = curr_he;
+	}
+
+
+	if (_g_id == u32x3(0, 0, 0)) {
+		num_half_edges = 24;
+		num_he_verts = 8;
+	}
+}

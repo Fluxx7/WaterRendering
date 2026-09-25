@@ -5,107 +5,28 @@
 These kernels are for loading in a halfedge mesh and initializing the root bisectors for it
 */
 
-/* 
-I'm in the process of replacing this kernel right now, 
-this does the creation of the halfedge mesh and the preparation for the root bisectors all in one,
-which makes it impossible to support arbitrary halfedge meshes
-*/
-kernel[16, 16, 1] initBuffers(_g_id : GlobalInvocationID, f32 sizeX, f32 sizeY, i32 edges_per_side) {
-	
-	i32x3 g_id = i32x3(_g_id);
-	if (g_id.x >= edges_per_side || g_id.y >= edges_per_side) return;
-	i32 max_id = edges_per_side - 1;
-
-	i32 face = g_id.x + g_id.y * edges_per_side;
-	i32 verts_per_row = edges_per_side + 1;
-	
-	// order: [top-left top-right bottom-right bottom-left centroid]
-	i32[5] verts;
-	// order: [top right bottom left]
-	i32[4] edges;
-	i32[4] twins;
-	
-	i32 first_vert = g_id.x + g_id.y * verts_per_row;	
-	verts[0] = first_vert;
-	verts[1] = 1 + first_vert;
-	verts[2] = 1 + first_vert + verts_per_row;	
-	verts[3] = first_vert + verts_per_row;	
-	verts[4] = i32(cbt_capacity + face);
-	
-	i32 first_edge = g_id.x + g_id.y * (2 * verts_per_row);
-	edges[0] = first_edge;
-	edges[1] = first_edge + edges_per_side + 1;
-	edges[2] = g_id.x + (g_id.y + 1) * (2 * verts_per_row);
-	edges[3] = first_edge + edges_per_side;
-	
-	twins[0] = g_id.y > 0 ? (4 * (face - edges_per_side) + 2) : -1;
-	twins[1] = g_id.x < max_id ? (4 * (face + 1) + 3) : -1;
-	twins[2] = g_id.y < max_id ? (4 * (face + edges_per_side)) : -1;
-	twins[3] = g_id.x > 0 ? (4 * (face - 1) + 1) : -1;
-	
-	i32 start_id = 4 * face;
-	for (i32 i = 0; i < 4; i++) {
-		i32 curr_id = start_id + i;	
-		HalfEdge curr_he;
-		curr_he.face = face;
-		curr_he.edge = edges[i];
-		curr_he.vert = verts[i];
-		curr_he.twin = twins[i];
-		curr_he.next = i == 3 ? start_id : curr_id + 1;
-		curr_he.prev = i == 0 ? start_id + 3 : curr_id - 1;
-		half_edges[curr_id] = curr_he;
-	}
-    
-    const f32x2 size = f32x2(sizeX, sizeY);
-	const f32x2 step = size / f32(verts_per_row - 1);
-	
-	const f32 half_size = f32(verts_per_row - 1) * 0.5;
-    
-    f32x3 v0 = f32x3((f32(_g_id.x) - half_size) * step.y, 0.0, (f32(_g_id.y) - half_size) * step.x);
-    f32x3 v1 = f32x3((f32(_g_id.x + 1) - half_size) * step.y, 0.0, (f32(_g_id.y) - half_size) * step.x);
-    f32x3 v2 = f32x3((f32(_g_id.x + 1) - half_size) * step.y, 0.0, (f32(_g_id.y + 1) - half_size) * step.x);
-    f32x3 v3 = f32x3((f32(_g_id.x) - half_size) * step.y, 0.0, (f32(_g_id.y + 1) - half_size) * step.x);
-    
-    
-    internal_vertices[verts[0]] = f32x3_to_vertex(v0);
-    internal_vertices[verts[4]] = f32x3_to_vertex((v0 + v1 + v2 + v3) / 4.0);
-	set_vertex_leaf(verts[0], 1);
-	vertex_indices[face] = verts[4];
-    if (g_id.x == max_id) {
-		internal_vertices[verts[1]] = f32x3_to_vertex(v1);
-		set_vertex_leaf(verts[1], 1);
-	}
-	if (g_id.y == max_id) {
-		internal_vertices[verts[3]] = f32x3_to_vertex(v3);
-		set_vertex_leaf(verts[3], 1);
-	}
-    if (g_id == i32x3(max_id, max_id, 0)) {
-		internal_vertices[verts[2]] = f32x3_to_vertex(v2);
-		set_vertex_leaf(verts[2], 1);
-	}
-
-	if (_g_id == u32x3(0, 0, 0)) {
-		u32 num_faces = edges_per_side * edges_per_side;
-		num_half_edges = 4 * num_faces;
-		id_offset = 1 << u32(ceil(log2(f32(num_half_edges))));
-		id_depth_offset = findMSB(id_offset);
-		num_face_verts = num_faces;
-		indirect_dispatch.d0.x = (num_half_edges + 31u) / 32u;
-		indirect_dispatch.d0.y = 1;
-		indirect_dispatch.d0.z = 1;
-	}
-}
+struct FaceInfo {
+	u32 halfedge_count;
+	u32 starting_he_index;	
+};
 
 buffer["HalfEdgeFaceBuffer"] face_buffer {
 	u32 num_faces;
-	u32x2[] face_he_counts;
+	FaceInfo[] data;
 };
+
+buffer["LoadDispatchBuffer"] : flag_indirect {
+	DispatchArgs halfedge_dispatch;
+};
+
 
 kernel[1, 1, 1] prepHalfEdgeLoad(g_id : GlobalInvocationID) {
 	face_buffer.num_faces = 0;
-	indirect_dispatch.d0.x = (num_half_edges + 31u) / 32u;
-	indirect_dispatch.d0.y = 1;
-	indirect_dispatch.d0.z = 1;
+	id_offset = 1 << u32(ceil(log2(f32(num_half_edges))));
+	id_depth_offset = findMSB(id_offset);
+	halfedge_dispatch.x = (num_half_edges + 31u) / 32u;
+	halfedge_dispatch.y = 1;
+	halfedge_dispatch.z = 1;
 }
 
 /* 
@@ -118,12 +39,12 @@ kernel[INDIRECT_KERNEL_SIZE, 1, 1] indexHalfEdgeFaces(g_id : GlobalInvocationID)
 	if (g_id.x >= num_half_edges) return;
 	HalfEdge he = half_edges[g_id.x];
 	i32 face = he.face;
-	u32 face_val = atomicAdd(face_buffer.face_he_counts[face].x, 1);
+	u32 face_val = atomicAdd(face_buffer.data[face].halfedge_count, 1);
 	
 	// if this is the first invocation for this face, increment the face count and store the index of this halfedge
 	if (face_val == 0) { 
-		atomicAdd(face_buffer.num_faces, 1);
-		atomicExchange(face_buffer.face_he_counts[face].y, g_id.x);
+		u32 slot = atomicAdd(face_buffer.num_faces, 1);
+		atomicExchange(face_buffer.data[face].starting_he_index, g_id.x);
 	}
 }
 
@@ -132,16 +53,16 @@ This kernel runs once per face and prepares the centroid vertex for each one whi
 the bisector vertex buffer
 */
 kernel[INDIRECT_KERNEL_SIZE, 1, 1] loadHalfEdgeMesh(g_id : GlobalInvocationID) {
-	if (g_id >= face_buffer.num_faces) return;
+	if (g_id.x >= face_buffer.num_faces) return;
 	u32 face_index = g_id.x;
-	u32x2 face_info = face_buffer.face_he_counts[face_index];
-	u32 he_count = face_info.x;
-	u32 start_index = face_info.y;
+	FaceInfo face_info = face_buffer.data[face_index];
+	u32 he_count = face_info.halfedge_count;
+	u32 start_index = face_info.starting_he_index;
 	HalfEdge curr_he = half_edges[start_index];
-	u32 curr_index = start_index;
-	u32 next_index = curr_he.next;
+	i32 curr_index = i32(start_index);
+	i32 next_index = curr_he.next;
 	f32x3 center_vert = f32x3(0);
-	for (i32 _he = 0; _he < he_count; _he++) {
+	for (u32 _he = 0; _he < he_count; _he++) {
 		i32 vert_index = curr_he.vert;
 		Vertex curr_vert = he_verts[vert_index];
 		internal_vertices[vert_index] = curr_vert;
@@ -158,6 +79,7 @@ kernel[INDIRECT_KERNEL_SIZE, 1, 1] loadHalfEdgeMesh(g_id : GlobalInvocationID) {
 	vertex_indices[face_index] = center_vert_index;
 	if (g_id.x == 0) {
 		num_face_verts = face_buffer.num_faces;	
+		num_vertices = num_face_verts;
 	}
 }
 

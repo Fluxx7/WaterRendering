@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cky6u0t1f7a7w" path="res://assets/Scripts/Utility/FPSLabel.cs" id="1_g538k"]
 [ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="2_x3a0b"]
-[ext_resource type="Script" uid="uid://d1qw1be7adl7v" path="res://assets/Scripts/Water/Water.cs" id="3_hgp32"]
+[ext_resource type="Script" uid="uid://d1qw1be7adl7v" path="res://assets/Scripts/Ocean/Water.cs" id="3_hgp32"]
 [ext_resource type="Shader" uid="uid://bxwegidev13eg" path="res://assets/Shaders/sum_of_sines_water_tex.gdshader" id="4_x3a0b"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_g538k"]

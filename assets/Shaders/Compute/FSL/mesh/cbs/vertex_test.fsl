@@ -7,3 +7,18 @@ kernel[32, 1, 1] vertexTest(g_id : GlobalInvocationID) {
 	Vertex v_vert = input_vertices[vert_index];
 	output_vertices[vert_index] = v_vert;	
 }
+
+buffer["SphereTestBuffer"] {
+	f32 sphere_radius;	
+};
+
+kernel[32, 1, 1] vertexTestSphere(g_id : GlobalInvocationID) {
+	if (g_id.x >= num_vertices) return;
+	u32 vert_index = vertex_indices[g_id.x];
+	f32x2 screen_size = cam.screen_size.xy;
+	Vertex v_vert = input_vertices[vert_index];
+	f32x3 vert = f32x3(v_vert.x, v_vert.y, v_vert.z);
+	f32 dist = distance(vert, f32x3(0));
+	vert *= sphere_radius / dist;
+	output_vertices[vert_index] = Vertex(vert.x, vert.y, vert.z);	
+}

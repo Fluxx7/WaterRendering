@@ -19,12 +19,18 @@ public partial class FSLStorageBuffer : FSLBuffer
 
     public void SetBuffer(Godot.Collections.Dictionary<StringName, Variant> values) => Inner.Call(MethodName.SetBuffer, values);
 
+    public byte[] GetBufferValuesBytes(uint offset = 0, uint numBytes = 0) => Inner.Call(MethodName.GetBufferValuesBytes, offset, numBytes).As<byte[]>();
+
+    public void GetBufferValuesBytesAsync(Godot.Callable callback, uint offset = 0, uint numBytes = 0) => Inner.Call(MethodName.GetBufferValuesBytesAsync, callback, offset, numBytes);
+
     public void SetUnsizedElementCount(uint numElements) => Inner.Call(MethodName.SetUnsizedElementCount, numElements);
 
     public new static class MethodName
     {
         public static readonly StringName SetField = "set_field";
         public static readonly StringName SetBuffer = "set_buffer";
+        public static readonly StringName GetBufferValuesBytes = "get_buffer_values_bytes";
+        public static readonly StringName GetBufferValuesBytesAsync = "get_buffer_values_bytes_async";
         public static readonly StringName SetUnsizedElementCount = "set_unsized_element_count";
     }
 }

@@ -1,5 +1,6 @@
 using FluxxiShaderLang;
 using Godot;
+using Godot.Collections;
 using GodotWaterRendering.assets.Scripts.Utility;
 
 
@@ -31,7 +32,7 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 	private bool _warnedMissingMaterial;
 
 	private FSLFile vertTestFile = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/mesh/cbs/vertex_test.fsl");
-	
+	private ComputeKernel dummyVertKernel;
 	private DisplayMode _mode = DisplayMode.TriangleId;
 
 	[Export]
@@ -53,14 +54,18 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 		get => useVertexKernel;
 		set {
 			useVertexKernel = value;
-			VertexKernel = value ? vertTestFile.GetKernel("vertexTest") : null;
+			VertexKernel = value ? dummyVertKernel : null;
 		}
 	}
 
 
 
 	public override void _Ready() {
-		if (useVertexKernel) VertexKernel = vertTestFile.GetKernel("vertexTest");
+		dummyVertKernel = vertTestFile.GetKernel("vertexTestSphere");
+		dummyVertKernel.GetStorageBuffer("SphereTestBuffer").SetBuffer(new Dictionary<StringName, Variant> {
+			{"sphere_radius", Size.X * 0.5f}
+		});
+		if (useVertexKernel) VertexKernel = dummyVertKernel;
 		ApplyMode();
 	}
 
@@ -91,7 +96,6 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 
 		if (_material is null && !_warnedMissingMaterial) {
 			_warnedMissingMaterial = true;
-			GD.PushWarning("CBTTestMesh: no ShaderMaterial found on surface 0; display mode toggle is inactive.");
 		}
 
 		return _material;

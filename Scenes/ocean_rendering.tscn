@@ -1,9 +1,9 @@
 [gd_scene format=3 uid="uid://cpwjm2lbw38ds"]
 
 [ext_resource type="Script" uid="uid://cky6u0t1f7a7w" path="res://assets/Scripts/Utility/FPSLabel.cs" id="1_jpx6j"]
-[ext_resource type="Script" uid="uid://ddumaw17bksl1" path="res://assets/Scripts/Water/SpectrumWater.cs" id="3_3df1w"]
+[ext_resource type="Script" uid="uid://ddumaw17bksl1" path="res://assets/Scripts/Ocean/SpectrumWater.cs" id="3_3df1w"]
 [ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="4_62ipq"]
-[ext_resource type="Script" uid="uid://pcg032ja3p6u" path="res://assets/Scripts/Water/FastWaterController.cs" id="8_6y65k"]
+[ext_resource type="Script" uid="uid://pcg032ja3p6u" path="res://assets/Scripts/Ocean/FastWaterController.cs" id="8_6y65k"]
 
 [sub_resource type="PhysicalSkyMaterial" id="PhysicalSkyMaterial_ebsym"]
 rayleigh_color = Color(0.145, 0.29724994, 0.58, 1)

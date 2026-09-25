@@ -1,25 +1,15 @@
 [gd_scene format=3 uid="uid://c83wh3sni6wrl"]
 
-[ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="1_1f4v1"]
+[ext_resource type="Script" uid="uid://2i5jb0ecmgdm" path="res://assets/Scripts/Utility/PlanetCamera.cs" id="1_irlwx"]
+[ext_resource type="Script" uid="uid://btptuvdnd2xtk" path="res://assets/Scripts/Mesh/CBTTestMesh.cs" id="2_c4s6b"]
+[ext_resource type="Shader" uid="uid://qif3o50i1xb7" path="res://Scenes/test_mesh.gdshader" id="3_irlwx"]
 
-[sub_resource type="FastNoiseLite" id="FastNoiseLite_irlwx"]
-noise_type = 3
-frequency = 0.0548
-
-[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_c4s6b"]
-width = 2048
-height = 2048
-noise = SubResource("FastNoiseLite_irlwx")
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_qmxgg"]
-albedo_color = Color(0.18431373, 1, 1, 1)
-albedo_texture = SubResource("NoiseTexture2D_c4s6b")
-roughness = 0.62
-
-[sub_resource type="SphereMesh" id="SphereMesh_qmxgg"]
-material = SubResource("StandardMaterial3D_qmxgg")
-radius = 4000.0
-height = 8000.0
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_w2yos"]
+render_priority = 0
+shader = ExtResource("3_irlwx")
+shader_parameter/display_mode = 1
+shader_parameter/color_saturation = 0.6
+shader_parameter/color_value = 0.9
 
 [sub_resource type="Environment" id="Environment_7rdt1"]
 background_mode = 1
@@ -27,20 +17,69 @@ ambient_light_energy = 0.0
 
 [node name="CelestialBodyTesting" type="Node3D" unique_id=487021627]
 
-[node name="Camera3D" type="Camera3D" parent="." unique_id=1831754564]
-transform = Transform3D(0.99965733, -0.0047703627, 0.025738612, 0, 0.98325497, 0.18223527, -0.026176946, -0.18217282, 0.982918, 108.12904, 735.7088, 4401.6357)
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1831754564 node_paths=PackedStringArray("Planet")]
+transform = Transform3D(0.99965733, -0.0047703627, 0.025738612, 0, 0.98325497, 0.18223527, -0.026176946, -0.18217282, 0.982918, 108.129, 735.709, 7000000)
 fov = 96.9
-script = ExtResource("1_1f4v1")
+near = 1.0
+far = 10000000.0
+script = ExtResource("1_irlwx")
+Planet = NodePath("../DynamicMeshInstance3D")
+PlanetRadius = 600000.0
+FloatingOrigin = false
+LevelToggleKey = 75
+FrameKey = 74
 
-[node name="Test Planet" type="MeshInstance3D" parent="." unique_id=1571810023]
-mesh = SubResource("SphereMesh_qmxgg")
+[node name="DynamicMeshInstance3D" type="GeometryInstance3D" parent="." unique_id=758196131]
+unique_name_in_owner = false
+process_mode = 0
+process_priority = 0
+process_physics_priority = 0
+process_thread_group = 0
+physics_interpolation_mode = 0
+auto_translate_mode = 0
+editor_description = ""
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+rotation_edit_mode = 0
+rotation_order = 2
+top_level = false
+visible = true
+visibility_parent = NodePath("")
+layers = 1
+sorting_offset = 0.0
+sorting_use_aabb_center = true
+material_override = null
+material_overlay = null
+transparency = 0.0
+cast_shadow = 1
+extra_cull_margin = 0.0
+custom_aabb = AABB(0, 0, 0, 0, 0, 0)
+lod_bias = 1.0
+ignore_occlusion_culling = false
+gi_mode = 1
+gi_lightmap_texel_scale = 1.0
+visibility_range_begin = 0.0
+visibility_range_begin_margin = 0.0
+visibility_range_end = 0.0
+visibility_range_end_margin = 0.0
+visibility_range_fade_mode = 0
+script = ExtResource("2_c4s6b")
+Mode = 0
+ToggleKey = 70
+PauseKey = 80
+UseVertexKernel = true
+renderCube = true
+Size = Vector2(1200000, 500)
+MaxDepth = 19
+SurfaceMaterial = SubResource("ShaderMaterial_w2yos")
+TriangleSize = 25
+metadata/_custom_type_script = "uid://dflvs4xa2855f"
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1856244438]
 environment = SubResource("Environment_7rdt1")
 
 [node name="OmniLight3D" type="OmniLight3D" parent="." unique_id=686914757]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 8000)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 80000000)
 light_color = Color(0.99391645, 1, 0.76890874, 1)
 light_energy = 15.471
-omni_range = 100000.0
+omni_range = 100000000.0
 omni_attenuation = 0.412

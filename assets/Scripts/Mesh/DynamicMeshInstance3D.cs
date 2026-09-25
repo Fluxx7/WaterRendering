@@ -31,7 +31,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	private bool useCustom0Buffer = false;
 	private FSLVertexBuffer localVertBuffer, finalVertBuffer, custom0Buffer;
 	private FSLIndexBuffer indexBuffer;
-	private FSLStorageBuffer dispatchBuffer, vertexDispatchBuffer;
+	private FSLStorageBuffer dispatchBuffer, vertexDispatchBuffer, halfedgeDispatchBuffer;
 	private FSLStorageBuffer commandBuffer;
 	private FSLStorageBuffer bisectorBuffer, bisectorIDs, bisectorNeighbors, bisectorNeighborsCopy, bisectorIndices, vertexIndices;
 	private FSLStorageBuffer cbTreeBuffer, cbtDataBuffer, halfEdgeBuffer, vertexBitfieldBuffer;
@@ -40,16 +40,20 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	private Rid vertBufferId, indexBufferId, commandBufferId, custom0BufferId;
 	protected bool rebuildQueued = false;
 	private bool relinkQueued = false;
-
+	private Aabb meshAabb;
+	
 	private bool needsInit = true;
 	private bool _cbtSizeDirty = false;
 
 	private uint maxDepth = 16;
 	private uint _baseSubdivisions = 16;
+	private uint maxBisectorCount;
 	
 	protected FSLUniformBuffer cameraInfoBuffer;
 	public bool Update = true;
 	private bool customVertexKernel = false;
+
+	[Export] public bool renderCube = false;
 
 	[Export(PropertyHint.Range, "1, 64,")] public uint UpdatesPerFrame = 1;
 
@@ -131,6 +135,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	private void RenderThreadInit() {
 		if (!needsInit) return;
 		needsInit = false;
+		
 		InitCBTrees();
 		ConnectFrameDriver();
 		if (relinkQueued) {
@@ -152,6 +157,17 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 			RenderingServer.Singleton.Connect(RenderingServer.SignalName.FramePreDraw, cb);
 	}
 
+	enum MeshLoadStage {
+		READY,
+		PENDING_NUM_HALFEDGES,
+		NUM_HALFEDGES_READY,
+		PENDING_NUM_FACES,
+		NUM_FACES_READY
+	}
+
+	private MeshLoadStage loadStage = MeshLoadStage.READY;
+	private uint numFaces, numHalfEdges;
+
 	private void OnFramePreDraw() {
 		if (needsInit) return;
 		if (rebuildQueued) UpdateParams();
@@ -160,7 +176,20 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 			RelinkVertexKernel();
 			relinkQueued = false;
 		}
-		if (Update) UpdateCBTrees();
+		
+		if (loadStage != MeshLoadStage.READY) {
+			switch (loadStage) {
+				case MeshLoadStage.NUM_HALFEDGES_READY: {
+					IndexHalfEdgeFaces();
+				} break;
+				case MeshLoadStage.NUM_FACES_READY: {
+					SeedRootBisectors();
+				} break;
+				default:
+					break;
+			}
+		} else if (Update) UpdateCBTrees();
+		
 	}
 
 	private void UpdateTriangleSizeBuffer() {
@@ -170,6 +199,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	}
 	
 	protected void UpdateCBTrees() {
+		if (loadStage != MeshLoadStage.READY) return;
 		Camera3D cam = GetViewport()?.GetCamera3D();
 		if (cam is null) return;
 		Vector3 localCam = GlobalTransform.AffineInverse() * cam.GlobalPosition;
@@ -192,7 +222,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	}
 	
 	private void UpdateParams() {
-		RebuildRootMesh();
+		UpdateBufferSizes();
 		if (_cbtSizeDirty) {
 			RebuildCBTGenPlan();
 			_cbtSizeDirty = false;
@@ -215,9 +245,26 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		custom0Buffer.SetVertexCount(numVertices);
 		custom0Buffer.ConnectAndCall(Callable.From((Rid new_rid) => {
 			custom0BufferId = new_rid;
-			rebuildQueued = true;
 		}));
 		useCustom0Buffer = true;
+		RelinkSurface();
+	}
+
+	private void RelinkSurface() {
+		Mesh.ClearSurfaces();
+		
+		Mesh.AddSurface(
+			GetSurfaceFormat(),
+			(Mesh.PrimitiveType) surfacePrimitiveType,
+			(int)numVertices,
+			vertBufferId,
+			meshAabb,
+			useCustom0Buffer ? custom0BufferId : default,
+			indexCount: (int)numIndices,
+			indexBuffer: indexBufferId,
+			material: _surfaceMaterial,
+			indirectBuffer: commandBufferId
+		);
 	}
 	
 	private void LinkVertexKernel() {
@@ -239,128 +286,39 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		cbtreeUpdate = ComputePlan.MakeNew();
 		cbtreeUpdate.AddPlan(cbtreeUpdateBase);
 	}
-	
-	private void RebuildRootMesh() {
+
+	private void UpdateCBTreeDepth() {
 		uint depth = CbtDepth;
-		// 3 verts and indices per active bisector
-		uint maxBisectorCount = 1u << (int)depth;
-		uint num_faces = BaseSubdivisions * BaseSubdivisions;
-		uint rootBisectorCount = 4 * num_faces;
-		if (depth > maxDepth)
-			GD.PushWarning(
-				$"CBTreeMesh: {BaseSubdivisions} base subdivisions need {rootBisectorCount} root bisectors, " +
-				$"raising the effective CBT depth from {maxDepth} to {depth}.");
+		maxBisectorCount = 1u << (int)depth;
+		cbTreeBuffer.SetUnsizedElementCount(maxBisectorCount * 2);
 		
+		cbtGroup.Dispatch("prepPipeline", 1,1 ,1);
+		cbtGroup.Dispatch("initCBTree", maxBisectorCount * 2, 1, 1, new Dictionary<StringName, Variant> {
+			{ "cbt_depth_in", depth }
+		});
+		UpdateBufferSizes();
+	}
+	
+	private void UpdateBufferSizes() {
 		// minimum 65536 + 1 to ensure that indices are 32-bit, I don't feel like checking manually both here and in the shader right now
 		// the root centroid vertex for each face is stored at maxBisectorCount + face_index, all other root vertices
 		// are stored at the index corresponding to their vertex number
-		numVertices = Math.Max(66537, maxBisectorCount + num_faces); 
 		numIndices = Math.Max(66537, maxBisectorCount * 3);
-
-		finalVertBuffer.SetVertexCount(numVertices);
-		if (customVertexKernel) {
-			localVertBuffer.SetVertexCount(numVertices);
-		}
 		indexBuffer.SetIndexCount(numIndices);
-		indexBuffer.SetIndexFormat(RenderingDevice.IndexBufferFormat.Uint32);
 
-		vertexIndices = cbtGroup.GetStorageBuffer("VertexCountBuffer");
-		vertexIndices.SetUnsizedElementCount(numVertices);
-
-		bisectorBuffer = cbtGroup.GetStorageBuffer("BisectorBuffer");
+		
 		bisectorBuffer.SetUnsizedElementCount(maxBisectorCount);
-		bisectKernel.AssignResource(bisectorBuffer, "BisectorBuffer");
-		
-		bisectorNeighbors = cbtGroup.GetStorageBuffer("NeighborsBuffer");
 		bisectorNeighbors.SetUnsizedElementCount(maxBisectorCount);
-		bisectKernel.AssignResource(bisectorNeighbors, "NeighborsCopyBuffer");
-
-		vertexBitfieldBuffer = cbtGroup.GetStorageBuffer("VertexBitfieldBuffer");
 		vertexBitfieldBuffer.SetUnsizedElementCount(maxBisectorCount);
-		
-		
-		bisectorNeighborsCopy = cbtGroup.GetStorageBuffer("NeighborsCopyBuffer");
 		bisectorNeighborsCopy.SetUnsizedElementCount(maxBisectorCount);
-		bisectKernel.AssignResource(bisectorNeighborsCopy, "NeighborsBuffer");
-		
-		bisectorIDs = cbtGroup.GetStorageBuffer("BisectorIDBuffer");
 		bisectorIDs.SetUnsizedElementCount(maxBisectorCount);
-		bisectKernel.AssignResource(bisectorIDs, "BisectorIDBuffer");
-		
-		splitBisectors = cbtGroup.GetStorageBuffer("SplitBisectors");
 		splitBisectors.SetUnsizedElementCount(maxBisectorCount);
-		
-		allocatingBisectors = cbtGroup.GetStorageBuffer("AllocatingBisectors");
 		allocatingBisectors.SetUnsizedElementCount(maxBisectorCount);
-		bisectKernel.AssignResource(allocatingBisectors, "AllocatingBisectors");
-		
-		mergeBisectors = cbtGroup.GetStorageBuffer("MergeBisectors");
 		mergeBisectors.SetUnsizedElementCount(maxBisectorCount);
-		
-		simplifyingBisectors = cbtGroup.GetStorageBuffer("SimplifyingBisectors");
 		simplifyingBisectors.SetUnsizedElementCount(maxBisectorCount);
-		
-		propagatingBisectors = cbtGroup.GetStorageBuffer("PropagatingBisectors");
 		propagatingBisectors.SetUnsizedElementCount(maxBisectorCount);
-		bisectKernel.AssignResource(propagatingBisectors, "PropagatingBisectors");
-		
-		bisectorIndices = cbtGroup.GetStorageBuffer("BisectorIndicesBuffer");
 		bisectorIndices.SetUnsizedElementCount(maxBisectorCount);
-		bisectKernel.AssignResource(bisectorIndices, "BisectorIndicesBuffer");
-		
-		cbTreeBuffer = cbtGroup.GetStorageBuffer("CBTreeBuffer");
-		cbTreeBuffer.SetUnsizedElementCount(maxBisectorCount * 2);
-		bisectKernel.AssignResource(cbTreeBuffer, "CBTreeBuffer");
-		
-		cbtDataBuffer = cbtGroup.GetStorageBuffer("CBTDataBuffer");
-		bisectKernel.AssignResource(cbtDataBuffer, "CBTDataBuffer");
-		
-		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
-		halfEdgeBuffer.SetUnsizedElementCount(rootBisectorCount);
-		
-		cameraInfoBuffer = cbtGroup.GetUniformBuffer("CameraBuffer");
-		
-		cbtGroup.Dispatch("prepPipeline", 1,1 ,1);
-		
-		ComputePlan.MakeNew().AddKernel(cbtGroup.GetKernel("initCBTree"), maxBisectorCount * 2, 1, 1, new Dictionary<StringName, Variant> {
-				{ "cbt_depth_in", depth }
-			})
-			.AddBarrier()
-			.AddKernel(cbtGroup.GetKernel("initBuffers"), BaseSubdivisions, BaseSubdivisions, 1,
-				new Dictionary<StringName, Variant> {
-					{"sizeX", Size.X},
-					{"sizeY", Size.Y},
-					{ "edges_per_side", BaseSubdivisions }
-				})
-			.AddBarrier()
-			.AddKernelIndirect(cbtGroup.GetKernel("makeRootBisectors"), dispatchBuffer, 0)
-			.Dispatch();
-		for (uint i = 1; i <= CbtDepth; i++) {
-			uint d = CbtDepth - i;
-			var maxThreads = (uint)Math.Pow(2, d);
-			cbtGroup.Dispatch("sumReduction", maxThreads, 1, 1, new Dictionary<StringName, Variant> {
-				{"d", d},
-				{"max_threads", maxThreads}
-			});
-		}
-		cbtGroup.DispatchIndirect("prepDraw", dispatchBuffer, 0);
-		
-		Mesh.ClearSurfaces();
-		
-		Mesh.AddSurface(
-			GetSurfaceFormat(),
-			(Mesh.PrimitiveType) surfacePrimitiveType,
-			(int)numVertices,
-			vertBufferId,
-			Engine.IsEditorHint() ? new Aabb(new Vector3(-Size.X * 0.5f, -1f, -Size.Y * 0.5f),
-				new Vector3(Size.X, 1f, Size.Y)) : new Aabb(new Vector3(-Size.X * 0.5f, -1f, -Size.Y * 0.5f),
-				new Vector3(Size.X, 100f, Size.Y)),
-			useCustom0Buffer ? custom0BufferId : default,
-			indexCount: (int)numIndices,
-			indexBuffer: indexBufferId,
-			material: _surfaceMaterial,
-			indirectBuffer: commandBufferId
-		);
+		LoadHalfEdgeMesh(halfEdgeBuffer, halfedgeVerts);
 	}
 	
 	
@@ -371,9 +329,11 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		dispatchBuffer = cbtGroup.GetStorageBuffer("IndirectDispatchBuffer");
 		bisectKernel.AssignResource(dispatchBuffer, "IndirectDispatchBuffer");
 		vertexDispatchBuffer = cbtGroup.GetStorageBuffer("VertexDispatchBuffer");
+		halfedgeDispatchBuffer = cbtGroup.GetStorageBuffer("LoadDispatchBuffer");
 		
 		finalVertBuffer = cbtGroup.GetVertexBuffer("VertexBuffer");
 		localVertBuffer = cbtGroup.GetVertexBuffer("InternalVertexBuffer");
+		maxBisectorCount = 1u << (int)CbtDepth;
 		
 		UpdateTriangleSizeBuffer();
 		
@@ -381,24 +341,51 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		localVertBuffer.SetVertexSizeBytes(12);
 		cbtGroup.AssignResource(finalVertBuffer, "InternalVertexBuffer");
 		indexBuffer = cbtGroup.GetIndexBuffer("IndexBuffer");
+		indexBuffer.SetIndexFormat(RenderingDevice.IndexBufferFormat.Uint32);
 		commandBuffer = cbtGroup.GetStorageBuffer("IndirectIndexedDrawCommandBuffer");
 		
 		finalVertBuffer.ConnectAndCall(Callable.From((Rid new_rid) => { 
 			vertBufferId = new_rid;
-			rebuildQueued = true;
 		}));
 		indexBuffer.ConnectAndCall(Callable.From((Rid new_rid) => { 
 			indexBufferId = new_rid;
-			rebuildQueued = true;
 		}));
 		commandBuffer.ConnectAndCall(Callable.From((Rid new_rid) => { 
 			commandBufferId = new_rid;
-			rebuildQueued = true;
 		}));
 		
+		vertexIndices = cbtGroup.GetStorageBuffer("VertexCountBuffer");
+		bisectorBuffer = cbtGroup.GetStorageBuffer("BisectorBuffer");
+		bisectorNeighbors = cbtGroup.GetStorageBuffer("NeighborsBuffer");
+		vertexBitfieldBuffer = cbtGroup.GetStorageBuffer("VertexBitfieldBuffer");
+		bisectorNeighborsCopy = cbtGroup.GetStorageBuffer("NeighborsCopyBuffer");
+		bisectorIDs = cbtGroup.GetStorageBuffer("BisectorIDBuffer");
+		splitBisectors = cbtGroup.GetStorageBuffer("SplitBisectors");
+		allocatingBisectors = cbtGroup.GetStorageBuffer("AllocatingBisectors");
+		mergeBisectors = cbtGroup.GetStorageBuffer("MergeBisectors");
+		simplifyingBisectors = cbtGroup.GetStorageBuffer("SimplifyingBisectors");
+		propagatingBisectors = cbtGroup.GetStorageBuffer("PropagatingBisectors");
+		bisectorIndices = cbtGroup.GetStorageBuffer("BisectorIndicesBuffer");
+		cbTreeBuffer = cbtGroup.GetStorageBuffer("CBTreeBuffer");
+		cbtDataBuffer = cbtGroup.GetStorageBuffer("CBTDataBuffer");
+		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
+		cameraInfoBuffer = cbtGroup.GetUniformBuffer("CameraBuffer");
 		
-		RebuildRootMesh();
+		bisectKernel.AssignResource(bisectorBuffer, "BisectorBuffer");
+		bisectKernel.AssignResource(bisectorNeighbors, "NeighborsCopyBuffer");
+		bisectKernel.AssignResource(bisectorNeighborsCopy, "NeighborsBuffer");
+		bisectKernel.AssignResource(bisectorIDs, "BisectorIDBuffer");
+		bisectKernel.AssignResource(allocatingBisectors, "AllocatingBisectors");
+		bisectKernel.AssignResource(propagatingBisectors, "PropagatingBisectors");
+		bisectKernel.AssignResource(bisectorIndices, "BisectorIndicesBuffer");
+		bisectKernel.AssignResource(cbTreeBuffer, "CBTreeBuffer");
+		bisectKernel.AssignResource(cbtDataBuffer, "CBTDataBuffer");
+		
+		InitMeshLoadPlan();
 		RebuildCBTGenPlan();
+		if (renderCube) BuildHalfEdgeCubeMesh();
+		else BuildHalfEdgePlaneMesh();
+		UpdateCBTreeDepth();
 		rebuildQueued = false;
 	}
 
@@ -439,4 +426,133 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		cbtreeUpdate = ComputePlan.MakeNew();
 		cbtreeUpdate.AddPlan(cbtreeUpdateBase);
 	}
+
+	private FSLVertexBuffer halfedgeVerts;
+
+	private FSLStorageBuffer halfedgeFaceBuffer;
+	private ComputePlan meshLoadInitPlan;
+
+	private void InitMeshLoadPlan() {
+		halfedgeFaceBuffer = cbtGroup.GetStorageBuffer("HalfEdgeFaceBuffer");
+		meshLoadInitPlan = ComputePlan.MakeNew();
+		meshLoadInitPlan.AddKernelWorkgroups(cbtGroup.GetKernel("prepHalfEdgeLoad"), 1, 1, 1)
+			.AddBarrier()
+			.AddKernelIndirect(cbtGroup.GetKernel("indexHalfEdgeFaces"), halfedgeDispatchBuffer, 0);
+	}
+
+	private void IndexHalfEdgeFaces() {
+		loadStage = MeshLoadStage.PENDING_NUM_FACES;
+		meshLoadInitPlan.Dispatch();
+		halfedgeFaceBuffer.GetBufferValuesBytesAsync(Callable.From((byte[] vals) => SetNumFaces(vals)), 0, 4);
+		halfedgeDispatchBuffer.GetBufferValuesBytesAsync(Callable.From((byte[] vals) => { 
+			var dispatch_data_out = new uint[3];
+			Buffer.BlockCopy(vals, 0, dispatch_data_out, 0, 12);
+			GD.Print($"dispatch size: {dispatch_data_out[0]}x, {dispatch_data_out[1]}y, {dispatch_data_out[2]}z");
+		}));
+	}
+	private void SeedRootBisectors() {
+		ComputePlan.MakeNew().AddKernel(cbtGroup.GetKernel("loadHalfEdgeMesh"), numFaces, 1, 1)
+			.AddKernelIndirect(cbtGroup.GetKernel("makeRootBisectors"), halfedgeDispatchBuffer, 0)
+			.Dispatch();
+		loadStage = MeshLoadStage.READY;
+		
+		for (uint i = 1; i <= CbtDepth; i++) {
+			uint d = CbtDepth - i;
+			var maxThreads = (uint)Math.Pow(2, d);
+			cbtGroup.Dispatch("sumReduction", maxThreads, 1, 1, new Dictionary<StringName, Variant> {
+				{"d", d},
+				{"max_threads", maxThreads}
+			});
+		}
+		cbtGroup.DispatchIndirect("prepDraw", dispatchBuffer, 0);
+		
+		RelinkSurface();
+	}
+
+	private void SetNumFaces(byte[] halfedge_face_buffer_vals) {
+		var buffer_data_out = new uint[1];
+		Buffer.BlockCopy(halfedge_face_buffer_vals, 0, buffer_data_out, 0, 4);
+		numFaces = buffer_data_out[0];
+		numVertices = Math.Max(66537, maxBisectorCount + numFaces); 
+		finalVertBuffer.SetVertexCount(numVertices);
+		if (customVertexKernel) {
+			localVertBuffer.SetVertexCount(numVertices);
+		}
+		vertexIndices.SetUnsizedElementCount(numVertices);
+		if (useCustom0Buffer) custom0Buffer.SetVertexCount(numVertices);
+		GD.Print($"num_faces: {numFaces}");
+		loadStage = MeshLoadStage.NUM_FACES_READY;
+	}
+	
+	private void SetNumHalfEdges(byte[] halfedge_buffer_vals) {
+		var buffer_data_out = new uint[1];
+		Buffer.BlockCopy(halfedge_buffer_vals, 0, buffer_data_out, 0, 4);
+		numHalfEdges = buffer_data_out[0];
+		GD.Print($"num_halfedges: {numHalfEdges}");
+		halfedgeFaceBuffer.SetUnsizedElementCount(numHalfEdges);
+		loadStage = MeshLoadStage.NUM_HALFEDGES_READY;
+	}
+	
+	private void LoadHalfEdgeMesh(FSLStorageBuffer halfedge_buffer, FSLVertexBuffer he_vert_buffer) {
+		loadStage = MeshLoadStage.PENDING_NUM_HALFEDGES;
+		cbtGroup.AssignResource(halfedge_buffer, "HalfEdgeBuffer");
+		cbtGroup.AssignResource(he_vert_buffer, "HalfEdgeVertexBuffer");
+		halfedge_buffer.GetBufferValuesBytesAsync(Callable.From((byte[] halfedge_buffer_data) => SetNumHalfEdges(halfedge_buffer_data)), 0, 4);
+	}
+	
+	
+	private void BuildHalfEdgePlaneMesh() {
+		uint num_faces = BaseSubdivisions * BaseSubdivisions;
+		uint num_halfedges = num_faces * 4;
+		halfedgeVerts = cbtGroup.GetVertexBuffer("HalfEdgeVertexBuffer");
+		halfedgeVerts.SetVertexSizeBytes(12);
+		halfedgeVerts.SetVertexCount(num_halfedges);
+		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
+		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
+		
+		cbtGroup.Dispatch("planeMeshHalfEdge", _baseSubdivisions, _baseSubdivisions, 1, new Dictionary<StringName, Variant> {
+			{"sizeX", Size.X},
+			{"sizeY", Size.Y},
+			{ "edges_per_side", _baseSubdivisions}
+		});
+
+		meshAabb = Engine.IsEditorHint()
+			? new Aabb(new Vector3(-Size.X * 0.5f, -1f, -Size.Y * 0.5f),
+				new Vector3(Size.X, 1f, Size.Y))
+			: new Aabb(new Vector3(-Size.X * 0.5f, -1f, -Size.Y * 0.5f),
+				new Vector3(Size.X, 100f, Size.Y));
+	}
+	
+	private void BuildHalfEdgeCubeMesh() {
+		uint num_halfedges = 24;
+		halfedgeVerts = cbtGroup.GetVertexBuffer("HalfEdgeVertexBuffer");
+		halfedgeVerts.SetVertexSizeBytes(12);
+		halfedgeVerts.SetVertexCount(num_halfedges);
+		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
+		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
+		
+		cbtGroup.Dispatch("cubeMeshHalfEdge", 6, 1, 1, new Dictionary<StringName, Variant> {
+			{"size", Size.X}
+		});
+
+		meshAabb = new Aabb(new Vector3(-Size.X * 0.5f, -Size.X * 0.5f, -Size.X * 0.5f),
+			new Vector3(Size.X, Size.X, Size.X));
+	}
+	
+	private void BuildHalfEdgeIcosahedronMesh() {
+		uint num_faces = BaseSubdivisions * BaseSubdivisions;
+		uint num_halfedges = num_faces * 4;
+		halfedgeVerts = cbtGroup.GetVertexBuffer("HalfEdgeVertexBuffer");
+		halfedgeVerts.SetVertexSizeBytes(12);
+		halfedgeVerts.SetVertexCount(num_halfedges);
+		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
+		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
+		
+		cbtGroup.Dispatch("icosahedronMeshHalfEdge", _baseSubdivisions, _baseSubdivisions, 1, new Dictionary<StringName, Variant> {
+			{"sizeX", Size.X},
+			{"sizeY", Size.Y},
+			{ "edges_per_side", _baseSubdivisions}
+		});
+	}
+	
 }
