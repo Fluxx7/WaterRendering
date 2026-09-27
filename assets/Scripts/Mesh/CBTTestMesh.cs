@@ -34,6 +34,7 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 	private FSLFile vertTestFile = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/mesh/cbs/vertex_test.fsl");
 	private ComputeKernel dummyVertKernel;
 	private DisplayMode _mode = DisplayMode.TriangleId;
+	private bool UpdatePlanet = true;
 	[Export] public PlanetCamera originCamera;
 
 	[Export]
@@ -60,22 +61,25 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 	}
 
 
-
-	public override void _Ready() {
-		dummyVertKernel = vertTestFile.GetKernel("vertexTestSphere");
+	private void OnOriginRebased(Vector3 origin, Vector3 _delta) {
 		dummyVertKernel.GetUniformBuffer("SphereTestBuffer").SetBuffer(new Dictionary<StringName, Variant> {
-			{"origin", new Vector3(0, 0, 0)},
+			{"origin", origin},
 			{"sphere_radius", SphereRadius}
 		});
+		var sphere_dims = new Vector3(SphereRadius, SphereRadius, SphereRadius);
+		CustomAabb = new Aabb(-sphere_dims - origin, sphere_dims * 2f);
+	}
+
+	public override void _Ready() {
+		Update = false;
+		dummyVertKernel = vertTestFile.GetKernel("vertexTestSphere");
+		if (originCamera != null) {
+			originCamera.OriginRebased += OnOriginRebased;
+			OnOriginRebased(originCamera.RebaseOrigin, new Vector3());
+		}
 		if (useVertexKernel) VertexKernel = dummyVertKernel;
 		ApplyMode();
-		if (originCamera != null) originCamera.OriginRebased += (origin, delta) => {
-			dummyVertKernel.GetUniformBuffer("SphereTestBuffer").SetBuffer(new Dictionary<StringName, Variant> {
-				{"origin", origin},
-				{"sphere_radius", SphereRadius}
-			});
-			CustomAabb = new Aabb(SphereRadius - origin.X, SphereRadius - origin.Y, SphereRadius - origin.Z, SphereRadius * 2f, SphereRadius * 2f, SphereRadius * 2f);
-		};
+		
 	}
 
 	public override void _UnhandledKeyInput(InputEvent @event) {
@@ -83,13 +87,18 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 		
 		if (key.Keycode != ToggleKey) {
 			if (key.Keycode == PauseKey) {
-				Update = !Update;
+				UpdatePlanet = !UpdatePlanet;
 			}
 			return;
 		}
 
 		Mode = (DisplayMode)(((int)_mode + 1) % 3);
 		GetViewport().SetInputAsHandled();
+	}
+
+	public override void _Process(double delta) {
+		if (UpdatePlanet) UpdateCBTrees();
+		else RedisplaceVerts();
 	}
 
 	private void ApplyMode() {

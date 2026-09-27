@@ -1,0 +1,54 @@
+struct df32 { f32 hi; f32 lo; };
+
+// s + err == a + b exactly, for any a, b.
+df32 two_sum(precise f32 a, precise f32 b) {
+	precise f32 s = a + b;
+	precise f32 bb = s - a;
+	precise f32 err = (a - (s - bb)) + (b - bb);
+	return df32(s, err);
+}
+
+// Same, but only valid when |a| >= |b|. Cheaper; used to renormalise.
+df32 fast_two_sum(precise f32 a, precise f32 b) {
+	precise f32 s = a + b;
+	precise f32 err = b - (s - a);
+	return df32(s, err);
+}
+
+// p + err == a * b exactly. fma rounds once, so it recovers the product's rounding error.
+df32 two_prod(precise f32 a, precise f32 b) {
+	precise f32 p = a * b;
+	precise f32 err = fma(a, b, -p);
+	return df32(p, err);
+}
+
+df32 df_add(df32 a, df32 b) {
+	df32 s = two_sum(a.hi, b.hi);
+	precise f32 err = s.lo + (a.lo + b.lo);
+	return fast_two_sum(s.hi, err);
+}
+
+df32 df_sub(df32 a, df32 b) {
+	return df_add(a, df32(-b.hi, -b.lo)); 
+}
+
+df32 df_mul(df32 a, df32 b) {
+	df32 p = two_prod(a.hi, b.hi);
+	precise f32 err = p.lo + (a.hi * b.lo + a.lo * b.hi);
+	return fast_two_sum(p.hi, err);
+}
+
+// One float division, then correct it using the exact remainder.
+df32 df_div(df32 a, df32 b) {
+	f32 q1 = a.hi / b.hi;
+	df32 r = df_sub(a, df_mul(df32(q1, 0.0), b));
+	return fast_two_sum(q1, r.hi / b.hi);
+}
+
+// Float sqrt plus one Newton step against the exact residual.
+df32 df_sqrt(df32 a) {
+	f32 s = sqrt(a.hi);
+	df32 r = df_sub(a, two_prod(s, s));
+	return fast_two_sum(s, r.hi / (2.0 * s));
+}
+

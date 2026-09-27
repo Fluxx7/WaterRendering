@@ -17,12 +17,17 @@ namespace GodotWaterRendering.assets.Scripts.Utility;
 /// </para>
 /// <para>
 /// That last one is why this camera carries a floating origin. The authoritative position is
-/// held in double precision in <em>planet-local</em> space - measured from the body's centre -
-/// and the scene is rendered in a <em>rebased</em> frame whose origin is
-/// <see cref="RebaseOrigin"/>, a snapped point that follows the camera. So
-/// <c>GlobalPosition</c> stays small and smooth, and everything else in the scene is expected
-/// to render in that same rebased frame. See <see cref="RebaseOrigin"/> for what that means for
-/// the rest of the scene.
+/// held in double precision in world space, and the scene is rendered in a <em>rebased</em>
+/// frame whose origin is <see cref="RebaseOrigin"/>, a snapped world-space point that follows
+/// the camera. So <c>GlobalPosition</c> stays small and smooth wherever the camera is, and
+/// everything else in the scene is expected to render in that same rebased frame. See
+/// <see cref="RebaseOrigin"/> for what that means for the rest of the scene.
+/// </para>
+/// <para>
+/// <see cref="Planet"/> is only the body the camera navigates around - altitude, local up, the
+/// surface clamp and orbit are measured from it. It plays no part in the rebase, so any number
+/// of bodies can share one floating origin, and <see cref="Planet"/> can be reassigned at
+/// runtime without the camera moving.
 /// </para>
 /// <para>
 /// Controls: right mouse captures the pointer and looks. WASD moves, Q/E descend/ascend along
@@ -57,14 +62,27 @@ public partial class PlanetCamera : Camera3D {
 		public Vector3 ToVector3() => new((float)X, (float)Y, (float)Z);
 	}
 
-	/// <summary>Raised when <see cref="RebaseOrigin"/> moves. <c>delta</c> is the shift that every
-	/// node rendering in the rebased frame must add to its position to stay put.</summary>
+	/// <summary>Raised when <see cref="RebaseOrigin"/> moves, including once right after startup
+	/// (deferred, so nodes that connect in their own <c>_Ready</c> still receive it). The scene is
+	/// treated as starting unrebased, so the first emission's <c>delta</c> is <c>-origin</c>: a node
+	/// placed in world space only ever needs to add <c>delta</c>, and must not also subtract
+	/// <see cref="RebaseOrigin"/> itself at startup.</summary>
 	[Signal] public delegate void OriginRebasedEventHandler(Vector3 origin, Vector3 delta);
 
-	/// <summary>Body being explored. Sampled once in <see cref="_Ready"/> and then left alone, so
-	/// that rebasing this node's own transform cannot feed back into the camera's idea of where
-	/// the centre is. Call <see cref="RefreshCenter"/> if the body genuinely moves.</summary>
-	[Export] public Node3D Planet;
+	private Node3D _planet;
+
+	/// <summary>Body being explored. Its centre is sampled when assigned and in <see cref="_Ready"/>,
+	/// then held; call <see cref="RefreshCenter"/> if the body genuinely moves. Body nodes should not
+	/// be moved by the rebase themselves - they take <see cref="RebaseOffsetFor"/> through their
+	/// vertex kernel - so their <c>GlobalPosition</c> stays the true world-space centre.</summary>
+	[Export]
+	public Node3D Planet {
+		get => _planet;
+		set {
+			_planet = value;
+			if (IsInsideTree()) RefreshCenter();
+		}
+	}
 
 	/// <summary>Centre used when <see cref="Planet"/> is null.</summary>
 	[Export] public Vector3 FallbackCenter = Vector3.Zero;
@@ -115,9 +133,9 @@ public partial class PlanetCamera : Camera3D {
 
 	[ExportGroup("Floating origin")]
 	/// <summary>Whether the scene renders in a rebased frame. Turn this off until the rest of the
-	/// scene subtracts <see cref="RebaseOrigin"/>: with it on and the CBT mesh still emitting
-	/// planet-local vertices, the camera renders a hundred units from the world origin while the
-	/// surface is still 2.5e6 away, so you end up stranded at the body's centre.
+	/// scene applies the rebase: with it on and a body still emitting unrebased vertices, the camera
+	/// renders a few hundred units from the world origin while the surface is still millions of
+	/// units away, so you end up stranded far from anything you can see.
 	/// <para>
 	/// While off, <see cref="RebaseOrigin"/> reads as zero, so consumer code written against it is
 	/// already correct and becomes live the moment this is switched on. Position still accumulates
@@ -130,17 +148,21 @@ public partial class PlanetCamera : Camera3D {
 	/// <summary>Spacing of the grid <see cref="RebaseOrigin"/> snaps to. Rounded up to a power of
 	/// two so that every origin is exactly representable in float32 and the subtraction consumers
 	/// perform against it introduces no error of its own. Larger means fewer rebase events and a
-	/// larger residual <c>GlobalPosition</c>; 256 leaves roughly 2e-5 of positional resolution.</summary>
+	/// larger residual <c>GlobalPosition</c>; 256 leaves roughly 3e-5 of positional resolution.
+	/// Place body centres on multiples of this too, so that <see cref="RebaseOffsetFor"/> is exact
+	/// for them.</summary>
 	[Export] public float SnapGrid = 256f;
 
 	[ExportGroup("Frustum")]
 	/// <summary>Whether the near and far planes are refitted from altitude each frame.</summary>
 	[Export] public bool AutoFrustum = true;
 
-	/// <summary>Near plane as a fraction of altitude, bounded below by <see cref="MinNear"/> and,
-	/// unless <see cref="UnboundedFar"/> is on, raised by the <see cref="MaxDepthRatio"/> cap.</summary>
+	/// <summary>Near plane as a fraction of altitude, bounded below by <see cref="MinNear"/> and
+	/// raised by the <see cref="MaxDepthRatio"/> cap. Ignored while <see cref="UnboundedFar"/> is on,
+	/// where near is held at <see cref="MinNear"/>.</summary>
 	[Export] public float NearPerAltitude = 0.002f;
 
+	/// <summary>Smallest near plane, and the fixed near plane while <see cref="UnboundedFar"/> is on.</summary>
 	[Export] public float MinNear = 0.05f;
 
 	/// <summary>Smallest far plane, so scene content nearer than the horizon does not get clipped
@@ -152,8 +174,8 @@ public partial class PlanetCamera : Camera3D {
 	/// depth, and the scene disappears. Kept well under that for depth precision as well.</summary>
 	[Export] public float MaxDepthRatio = 1e6f;
 
-	/// <summary>Holds the far plane at <see cref="UnboundedFarDistance"/> and drops the
-	/// <see cref="MaxDepthRatio"/> cap, leaving near to track altitude alone. Needs an engine built
+	/// <summary>Holds the far plane at <see cref="UnboundedFarDistance"/> and the near plane at
+	/// <see cref="MinNear"/>, dropping the <see cref="MaxDepthRatio"/> cap. Needs an engine built
 	/// with godotengine/godot#99986, which derives near and far from stored frustum planes instead
 	/// of the projection matrix; on a stock build a far this large reproduces the depth collapse
 	/// the ratio cap exists to prevent. Forward+ only - Mobile and Compatibility keep a 24-bit
@@ -175,12 +197,24 @@ public partial class PlanetCamera : Camera3D {
 	/// anywhere on a sphere.</summary>
 	private Quaternion _orientation = Quaternion.Identity;
 
-	/// <summary>Authoritative position, in planet-local space, in double precision. Everything the
-	/// camera decides is derived from this; <c>GlobalPosition</c> is an output, never an input.</summary>
-	private Vec3D _planetLocal;
+	/// <summary>Authoritative position, in world space, in double precision. Everything the camera
+	/// decides is derived from this; <c>GlobalPosition</c> is an output, never an input.</summary>
+	private Vec3D _position;
+
+	/// <summary>The authoritative position measured from the current body's centre. Everything to
+	/// do with navigation works in this frame.</summary>
+	private Vec3D PlanetLocal {
+		get => _position - new Vec3D(_center);
+		set => _position = value + new Vec3D(_center);
+	}
 
 	private Vector3 _center;
 	private Vector3 _rebaseOrigin;
+
+	/// <summary>Last origin the scene was told about. Starts at zero because the scene is authored
+	/// unrebased; every emission's delta is measured from this, so deltas chain correctly no matter
+	/// when the deferred startup announcement lands.</summary>
+	private Vector3 _announcedOrigin;
 	private float _snapGrid = 256f;
 
 	private Vector3 _velocity;
@@ -193,35 +227,40 @@ public partial class PlanetCamera : Camera3D {
 	private float _orbitLongitude;
 	private double _orbitAltitude;
 
-	/// <summary>Centre of the body, in the original unrebased world frame, as sampled at startup.</summary>
+	/// <summary>Centre of the current body, in world space.</summary>
 	public Vector3 Center => _center;
 
-	/// <summary>Origin of the rendered frame, expressed in planet-local space. Snapped to
-	/// <see cref="SnapGrid"/> so it is exactly representable in float32.
+	/// <summary>Origin of the rendered frame, in world space. Snapped to <see cref="SnapGrid"/> so it
+	/// is exactly representable in float32.
 	/// <para>
-	/// Everything drawn in the scene renders at <c>planetLocalPosition - RebaseOrigin</c>. For the
-	/// CBT mesh that means the vertex kernel subtracts this from each planet-local vertex while
-	/// the mesh node's own transform stays at identity; for ordinary nodes such as lights it means
-	/// their transform carries the subtraction. Subscribe to <see cref="OriginRebasedEventHandler"/>
-	/// to be told when it moves.
+	/// Everything drawn in the scene renders at <c>worldPosition - RebaseOrigin</c>. Ordinary nodes
+	/// such as lights carry that in their transform, by adding each <c>delta</c> from
+	/// <see cref="OriginRebasedEventHandler"/>. Bodies whose vertices are generated relative to their
+	/// own centre - the CBT meshes - instead subtract <see cref="RebaseOffsetFor"/> in their vertex
+	/// kernel, with the node's transform left at identity, which keeps the large cancellation out of
+	/// the GPU's model matrix.
 	/// </para></summary>
 	public Vector3 RebaseOrigin => _rebaseOrigin;
 
-	/// <summary>Camera position in planet-local space - the frame the CBT's <c>input_vertices</c>
-	/// live in. This is what belongs in the classifier's <c>camera_pos</c>.</summary>
-	public Vector3 PlanetLocalPosition => _planetLocal.ToVector3();
+	/// <summary>What a body centred at <paramref name="bodyCenter"/> subtracts from its body-local
+	/// vertices to land in the rebased frame. Computed in double; exact when the centre is on the
+	/// <see cref="SnapGrid"/>, otherwise off by under half a float step at the body's radius, which
+	/// shows as the body shifting by that much on each rebase.</summary>
+	public Vector3 RebaseOffsetFor(Vector3 bodyCenter) => (new Vec3D(_rebaseOrigin) - new Vec3D(bodyCenter)).ToVector3();
 
-	/// <summary>Camera transform in planet-local space. The classifier's <c>modelToView</c> wants
-	/// <c>projection * GetPlanetLocalTransform().AffineInverse() * planetModel</c>; building it
-	/// from <c>GetCameraTransform()</c> instead would mix the rebased frame into a matrix that is
-	/// applied to unrebased vertices.</summary>
+	/// <summary>Camera position measured from the current body's centre - the frame a body's
+	/// <c>input_vertices</c> live in.</summary>
+	public Vector3 PlanetLocalPosition => PlanetLocal.ToVector3();
+
+	/// <summary>Camera transform measured from the current body's centre, for anything that works
+	/// on a body's unrebased vertices.</summary>
 	public Transform3D GetPlanetLocalTransform() => new(GlobalBasis, PlanetLocalPosition);
 
 	/// <summary>Local vertical: the outward surface normal under the camera.</summary>
-	public Vector3 UpReference => _planetLocal.Normalized().ToVector3();
+	public Vector3 UpReference => PlanetLocal.Normalized().ToVector3();
 
 	/// <summary>Height above the surface. Negative once the camera is inside the body.</summary>
-	public float Altitude => (float)(_planetLocal.Length() - PlanetRadius);
+	public float Altitude => (float)(PlanetLocal.Length() - PlanetRadius);
 
 	/// <summary>Speed the camera would cruise at right now, before boost and crawl.</summary>
 	public float CruiseSpeed {
@@ -235,26 +274,32 @@ public partial class PlanetCamera : Camera3D {
 	private Vector3 NorthPole => Planet is not null && IsInstanceValid(Planet) ? Planet.GlobalBasis.Y.Normalized() : Vector3.Up;
 
 	public override void _Ready() {
-		_center = Planet is not null && IsInstanceValid(Planet) ? Planet.GlobalPosition : FallbackCenter;
 		_snapGrid = NormalizeSnapGrid(SnapGrid);
 		_orientation = GlobalBasis.GetRotationQuaternion().Normalized();
 
-		// The authored transform is read once, in the unrebased frame it was authored in.
-		_planetLocal = new Vec3D(GlobalPosition - _center);
-		_rebaseOrigin = FloatingOrigin ? SnapToGrid(_planetLocal) : Vector3.Zero;
+		// The authored transform is read once, in the unrebased world frame it was authored in.
+		_position = new Vec3D(GlobalPosition);
+		RefreshCenter();
+		_rebaseOrigin = FloatingOrigin ? SnapToGrid(_position) : Vector3.Zero;
 		ApplyPosition();
 
-		// A rebase expressed in planet-local space only lines up with the rest of the scene when
-		// the two frames share an origin.
-		if (FloatingOrigin && !_center.IsZeroApprox()) {
-			GD.PushWarning($"{Name}: FloatingOrigin needs the body centred on the world origin, but Center is {_center}.");
-		}
+		// Deferred so that nodes connecting in their own _Ready, which run after this one, still
+		// hear about the startup origin.
+		CallDeferred(MethodName.AnnounceOrigin);
 	}
 
-	/// <summary>Re-samples the body's centre from <see cref="Planet"/>. Only needed if the body
-	/// itself moves in the unrebased frame; a rebase of its node is not such a move.</summary>
+	/// <summary>Re-samples the body's centre from <see cref="Planet"/>, or <see cref="FallbackCenter"/>
+	/// without one. The camera's world position is untouched, so switching bodies never moves it.</summary>
 	public void RefreshCenter() {
-		if (Planet is not null && IsInstanceValid(Planet)) _center = Planet.GlobalPosition;
+		_center = Planet is not null && IsInstanceValid(Planet) ? Planet.GlobalPosition : FallbackCenter;
+
+		if (FloatingOrigin && SnapToGrid(new Vec3D(_center)) != _center) {
+			GD.PushWarning($"{Name}: body centre {_center} is off the {_snapGrid}-unit snap grid, so it "
+			               + "will shift by up to half a float step on each rebase.");
+		}
+
+		// Orbit state is relative to the body, so re-derive it around the new one.
+		if (_orbiting) SetOrbiting(true);
 	}
 
 	public override void _Input(InputEvent @event) {
@@ -327,24 +372,29 @@ public partial class PlanetCamera : Camera3D {
 			// Hysteresis of one whole cell: snapping on every crossing would fire a rebase every
 			// few frames while the camera loiters on a boundary, and each rebase moves every node
 			// in the scene.
-			if ((_planetLocal - new Vec3D(_rebaseOrigin)).Length() > _snapGrid) {
-				SetRebaseOrigin(SnapToGrid(_planetLocal));
+			if ((_position - new Vec3D(_rebaseOrigin)).Length() > _snapGrid) {
+				SetRebaseOrigin(SnapToGrid(_position));
 			}
 		} else {
 			SetRebaseOrigin(Vector3.Zero);
 		}
 
-		GlobalPosition = _center + (_planetLocal - new Vec3D(_rebaseOrigin)).ToVector3();
+		GlobalPosition = (_position - new Vec3D(_rebaseOrigin)).ToVector3();
 		GlobalBasis = new Basis(_orientation);
 	}
 
-	/// <summary>Moves the rebase origin and tells the scene by how much, if it actually changed.</summary>
 	private void SetRebaseOrigin(Vector3 origin) {
-		if (origin == _rebaseOrigin) return;
-
-		Vector3 shift = _rebaseOrigin - origin;
 		_rebaseOrigin = origin;
-		EmitSignal(SignalName.OriginRebased, origin, shift);
+		AnnounceOrigin();
+	}
+
+	/// <summary>Tells the scene about the current origin, if it has not been told already.</summary>
+	private void AnnounceOrigin() {
+		if (_rebaseOrigin == _announcedOrigin) return;
+
+		Vector3 shift = _announcedOrigin - _rebaseOrigin;
+		_announcedOrigin = _rebaseOrigin;
+		EmitSignal(SignalName.OriginRebased, _rebaseOrigin, shift);
 	}
 
 	private Vector3 SnapToGrid(Vec3D p) {
@@ -397,14 +447,14 @@ public partial class PlanetCamera : Camera3D {
 
 		// Integration happens in double. In float32 at a radius of 2.5e6 any step below an eighth
 		// of a unit vanishes entirely, which freezes the camera solid at crawl speed.
-		_planetLocal += new Vec3D(_velocity) * dt;
+		_position += new Vec3D(_velocity) * dt;
 
 		if (ClampToSurface) {
-			double length = _planetLocal.Length();
+			double length = PlanetLocal.Length();
 			double floorDistance = PlanetRadius + MinAltitude;
 			if (length < floorDistance && length > 1e-9) {
-				Vec3D normal = _planetLocal * (1.0 / length);
-				_planetLocal = normal * floorDistance;
+				Vec3D normal = PlanetLocal * (1.0 / length);
+				PlanetLocal = normal * floorDistance;
 				// Drop the inward component so the camera slides along the surface instead of
 				// grinding into it and re-accelerating out every frame.
 				Vector3 n = normal.ToVector3();
@@ -445,9 +495,9 @@ public partial class PlanetCamera : Camera3D {
 		_velocity = Vector3.Zero;
 		if (!value) return;
 
-		double distance = Math.Max(_planetLocal.Length(), PlanetRadius + MinAltitude);
+		double distance = Math.Max(PlanetLocal.Length(), PlanetRadius + MinAltitude);
 		Vector3 north = NorthPole;
-		Vec3D direction = _planetLocal.Normalized();
+		Vec3D direction = PlanetLocal.Normalized();
 
 		_orbitAltitude = distance - PlanetRadius;
 		_orbitLatitude = (float)Math.Asin(Math.Clamp(direction.Dot(new Vec3D(north)), -1.0, 1.0));
@@ -477,7 +527,7 @@ public partial class PlanetCamera : Camera3D {
 		                   + new Vec3D(frame.Z) * (cos * Math.Sin(_orbitLongitude))
 		                   + new Vec3D(north) * Math.Sin(_orbitLatitude)).Normalized();
 
-		_planetLocal = direction * (PlanetRadius + _orbitAltitude);
+		PlanetLocal = direction * (PlanetRadius + _orbitAltitude);
 		LookAlong(-direction.ToVector3(), north);
 	}
 
@@ -505,7 +555,7 @@ public partial class PlanetCamera : Camera3D {
 
 	/// <summary>Backs off along the current view direction until the whole body fits the frustum.</summary>
 	public void FrameBody() {
-		Vec3D direction = _planetLocal.Length() > 1e-9 ? _planetLocal.Normalized() : new Vec3D(NorthPole);
+		Vec3D direction = PlanetLocal.Length() > 1e-9 ? PlanetLocal.Normalized() : new Vec3D(NorthPole);
 
 		// Half-angle subtended by the body must fit inside the narrower half-FOV.
 		float aspect = GetViewport() is { } viewport ? viewport.GetVisibleRect().Size.Aspect() : 1f;
@@ -514,7 +564,7 @@ public partial class PlanetCamera : Camera3D {
 		if (KeepAspect == KeepAspectEnum.Height && aspect < 1f) halfFov = Mathf.Atan(Mathf.Tan(halfFov) * aspect);
 
 		double distance = PlanetRadius / Math.Sin(Math.Max(halfFov, 0.001f)) * 1.1;
-		_planetLocal = direction * distance;
+		PlanetLocal = direction * distance;
 
 		if (_orbiting) {
 			_orbitAltitude = distance - PlanetRadius;
@@ -531,22 +581,24 @@ public partial class PlanetCamera : Camera3D {
 	/// camera than its tangent point, so that distance bounds everything visible of it and keeps
 	/// far/near inside what a float32 projection can represent.</summary>
 	private void UpdateFrustum() {
-		double altitude = Math.Max(_planetLocal.Length() - PlanetRadius, MinAltitude);
+		double altitude = Math.Max(PlanetLocal.Length() - PlanetRadius, MinAltitude);
 
 		// sqrt(d^2 - R^2) rewritten as sqrt(h*(2R + h)): the direct form subtracts two numbers
 		// near 6.25e12 to get 1e7, which float cannot hold at that magnitude.
 		double horizon = Math.Sqrt(altitude * (2.0 * PlanetRadius + altitude));
 		float far = Mathf.Max((float)(horizon * 1.1), MinFar);
 
-		float near = Mathf.Max((float)altitude * NearPerAltitude, MinNear);
-
 		if (UnboundedFar) {
-			// Reverse-Z float depth spends its precision near the camera, so near alone decides
-			// how well the ground resolves; the ratio cap would drag near out to far / 1e6.
-			Near = near;
-			Far = Mathf.Max(UnboundedFarDistance, near * 2f);
+			// Reverse-Z float depth stores near/distance, which float32 resolves to the same ~8e-8
+			// relative precision at every distance while it stays a normal number (out to ~4e36 at
+			// a near of 0.05). So a fixed near costs nothing anywhere; scaling it with altitude
+			// only clips nearby objects - and altitude is measured from the body, not from them.
+			Near = MinNear;
+			Far = Mathf.Max(UnboundedFarDistance, MinNear * 2f);
 			return;
 		}
+
+		float near = Mathf.Max((float)altitude * NearPerAltitude, MinNear);
 
 		near = Mathf.Max(near, far / Mathf.Max(MaxDepthRatio, 1f));
 

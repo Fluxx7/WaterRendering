@@ -8,19 +8,41 @@ kernel[32, 1, 1] vertexTest(g_id : GlobalInvocationID) {
 	output_vertices[vert_index] = v_vert;	
 }
 
+#include "../../double_precision.fsl"
+
 uniform buffer["SphereTestBuffer"] {
 	f32x3 origin;
 	f32 sphere_radius;	
 };
 
+f32 project_component(f32 c, df32 scale, f32 o_hi, f32 o_lo) {
+	df32 d = df_sub(df_mul(df32(c, 0.0), scale), df32(o_hi, o_lo));
+	return d.hi + d.lo;   // small now, so one rounding costs micrometres
+}
+
 kernel[32, 1, 1] vertexTestSphere(g_id : GlobalInvocationID) {
 	if (g_id.x >= num_vertices) return;
 	u32 vert_index = vertex_indices[g_id.x];
-	f32x2 screen_size = cam.screen_size.xy;
 	Vertex v_vert = input_vertices[vert_index];
-	f32x3 vert = f32x3(v_vert.x, v_vert.y, v_vert.z);
-	f32 dist = distance(vert, f32x3(0));
-	vert *= sphere_radius / dist;
-	vert -= origin;
-	output_vertices[vert_index] = Vertex(vert.x, vert.y, vert.z);	
+
+	df32 len_sq = df_add(df_add(two_prod(v_vert.x, v_vert.x), two_prod(v_vert.y, v_vert.y)),
+	                     two_prod(v_vert.z, v_vert.z));
+	df32 scale = df_div(df32(sphere_radius, 0.0), df_sqrt(len_sq));
+
+	output_vertices[vert_index] = Vertex(
+		project_component(v_vert.x, scale, origin.x, 0.0),
+		project_component(v_vert.y, scale, origin.y, 0.0),
+		project_component(v_vert.z, scale, origin.z, 0.0));
 }
+
+// kernel[32, 1, 1] vertexTestSphere(g_id : GlobalInvocationID) {
+// 	if (g_id.x >= num_vertices) return;
+// 	u32 vert_index = vertex_indices[g_id.x];
+// 	f32x2 screen_size = cam.screen_size.xy;
+// 	Vertex v_vert = input_vertices[vert_index];
+// 	f32x3 vert = f32x3(v_vert.x, v_vert.y, v_vert.z);
+// 	f32 dist = distance(vert, f32x3(0));
+// 	vert *= sphere_radius / dist;
+// 	vert -= origin;
+// 	output_vertices[vert_index] = Vertex(vert.x, vert.y, vert.z);	
+// }

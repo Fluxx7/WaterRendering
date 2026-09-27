@@ -14,6 +14,7 @@ public partial class OceanPlanet : DynamicMeshInstance3D {
 	private Shader _debugTexShader;
 	private uint _prevSubdivide;
 	private Vector2 _prevSize;
+	[Export] public PlanetCamera originCamera;
 	[Export] private Window debugWindow;
 	[Export] private Button debugWindowToggle;
 	[Export] private Window visualsWindow;
@@ -154,7 +155,6 @@ public partial class OceanPlanet : DynamicMeshInstance3D {
 	private Shader debugShader = ResourceLoader.Load<Shader>("res://assets/Shaders/ocean_debug.gdshader");
 	private Shader wireframeShader = ResourceLoader.Load<Shader>("res://assets/Shaders/ocean_wireframe.gdshader");
 	
-	
 	private void Simulate(bool simulate) {
 		_simulate = simulate;
 	}
@@ -200,6 +200,15 @@ public partial class OceanPlanet : DynamicMeshInstance3D {
 		_shader.SetShaderParameter("cascade_foam_weights", new Array<float>{1.0f, 1.0f, 1.0f, 1.0f});
 		_shader.SetShaderParameter("foamDetailTexture", GD.Load<Texture2D>("res://assets/Textures/foam-texture-2k/foam-texture-2d_displacement.png"));
 	}
+	
+	private void OnOriginRebased(Vector3 origin, Vector3 _delta) {
+		oceanVertex.GetUniformBuffer("PlanetInfoBuffer").SetBuffer(new Dictionary<StringName, Variant> {
+			{"origin", origin},
+			{"planet_radius", SphereRadius}
+		});
+		var sphere_dims = new Vector3(SphereRadius, SphereRadius, SphereRadius);
+		CustomAabb = new Aabb(-sphere_dims - origin, sphere_dims * 2f);
+	}
 	public override void _Ready() {
 		if (Engine.IsEditorHint()) {
 			_simulate = false;
@@ -210,9 +219,10 @@ public partial class OceanPlanet : DynamicMeshInstance3D {
 		oceanVertex.GetUniformBuffer("VertexParams").SetBuffer(new Dictionary<StringName, Variant> {
 			{"cutoff_params", new Vector4(500f, 0.0005f, 0f, 0f)}
 		});
-		oceanVertex.GetUniformBuffer("PlanetInfoBuffer").SetBuffer(new Dictionary<StringName, Variant> {
-			{"planet_radius", SphereRadius}
-		});
+		if (originCamera != null) {
+			OnOriginRebased(originCamera.RebaseOrigin, new Vector3());
+			originCamera.OriginRebased += OnOriginRebased;
+		}
 		EnableCustom0Buffer(oceanVertex.GetVertexBuffer("UVBuffer"));
 		VertexKernel = oceanVertex;
 		

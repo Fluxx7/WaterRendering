@@ -248,7 +248,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 			custom0BufferId = new_rid;
 		}));
 		useCustom0Buffer = true;
-		RelinkSurface();
+		if (loadStage == MeshLoadStage.READY) RelinkSurface();
 	}
 
 	private void RelinkSurface() {
@@ -533,7 +533,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
 		
 		cbtGroup.Dispatch("cubeMeshHalfEdge", 6, 1, 1, new Dictionary<StringName, Variant> {
-			{"size", SphereRadius * 2f}
+			{"size", 2f}
 		});
 
 		meshAabb = new Aabb(new Vector3(-SphereRadius, -SphereRadius, -SphereRadius),

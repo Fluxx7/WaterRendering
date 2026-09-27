@@ -19,9 +19,12 @@ public partial class FSLVertexBuffer : FSLBuffer
 
     public void SetVertexSizeBytes(uint vertexSize) => Inner.Call(MethodName.SetVertexSizeBytes, vertexSize);
 
+    public void SetBufferBytes(byte[] data, uint offset = 0, uint numBytes = 0) => Inner.Call(MethodName.SetBufferBytes, data, offset, numBytes);
+
     public new static class MethodName
     {
         public static readonly StringName SetVertexCount = "set_vertex_count";
         public static readonly StringName SetVertexSizeBytes = "set_vertex_size_bytes";
+        public static readonly StringName SetBufferBytes = "set_buffer_bytes";
     }
 }
