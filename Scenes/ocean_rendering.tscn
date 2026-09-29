@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cky6u0t1f7a7w" path="res://assets/Scripts/Utility/FPSLabel.cs" id="1_jpx6j"]
 [ext_resource type="Script" uid="uid://ddumaw17bksl1" path="res://assets/Scripts/Ocean/SpectrumWater.cs" id="3_3df1w"]
+[ext_resource type="Script" uid="uid://xej8t0fp0kiu" path="res://assets/Scripts/Mesh/PlaneHalfEdgeMesh.cs" id="4_3df1w"]
 [ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="4_62ipq"]
 [ext_resource type="Script" uid="uid://pcg032ja3p6u" path="res://assets/Scripts/Ocean/FastWaterController.cs" id="8_6y65k"]
 
@@ -28,6 +29,12 @@ fog_sky_affect = 0.0
 fog_depth_curve = 8.574179
 fog_depth_begin = 179.5
 fog_depth_end = 4000.0
+
+[sub_resource type="Resource" id="Resource_epyer"]
+script = ExtResource("4_3df1w")
+PlaneSize = Vector2(337096580, 337096580)
+BaseSubdivisions = 4
+metadata/_custom_type_script = "uid://xej8t0fp0kiu"
 
 [node name="Node3D" type="Node3D" unique_id=1407384273]
 
@@ -143,9 +150,8 @@ debugWindow = NodePath("../Debug Controls")
 debugWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Debug View")
 visualsWindow = NodePath("../Visual Controls")
 visualsWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
-PlaneSize = Vector2(22583000, 22583000)
+MeshData = SubResource("Resource_epyer")
 MaxDepth = 18
-BaseSubdivisions = 4
 metadata/_custom_type_script = "uid://dflvs4xa2855f"
 
 [node name="WaterController" type="Node" parent="Ocean" unique_id=426106023 node_paths=PackedStringArray("controlWindow", "controlWindowToggle")]

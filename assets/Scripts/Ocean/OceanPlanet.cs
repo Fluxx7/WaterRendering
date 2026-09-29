@@ -15,6 +15,7 @@ public partial class OceanPlanet : DynamicMeshInstance3D {
 	private uint _prevSubdivide;
 	private Vector2 _prevSize;
 	[Export] public PlanetCamera originCamera;
+	[Export] public float PlanetRadius = 500f;
 	[Export] private Window debugWindow;
 	[Export] private Button debugWindowToggle;
 	[Export] private Window visualsWindow;
@@ -204,9 +205,9 @@ public partial class OceanPlanet : DynamicMeshInstance3D {
 	private void OnOriginRebased(Vector3 origin, Vector3 _delta) {
 		oceanVertex.GetUniformBuffer("PlanetInfoBuffer").SetBuffer(new Dictionary<StringName, Variant> {
 			{"origin", origin},
-			{"planet_radius", SphereRadius}
+			{"planet_radius", PlanetRadius}
 		});
-		var sphere_dims = new Vector3(SphereRadius, SphereRadius, SphereRadius);
+		var sphere_dims = new Vector3(PlanetRadius, PlanetRadius, PlanetRadius);
 		CustomAabb = new Aabb(-sphere_dims - origin, sphere_dims * 2f);
 	}
 	public override void _Ready() {

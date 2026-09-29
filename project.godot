@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="GodotWaterRenderingFSL 4.8"
-run/main_scene="uid://cpwjm2lbw38ds"
+run/main_scene="uid://farsdj6y0ymp"
 config/features=PackedStringArray("4.8", "C#", "Forward Plus")
 config/icon="res://icon.svg"
 

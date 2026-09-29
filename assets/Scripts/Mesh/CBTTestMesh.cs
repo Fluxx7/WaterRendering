@@ -34,7 +34,7 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 	private FSLFile vertTestFile = FSLFile.FromFile("res://assets/Shaders/Compute/FSL/mesh/cbs/vertex_test.fsl");
 	private ComputeKernel dummyVertKernel;
 	private DisplayMode _mode = DisplayMode.TriangleId;
-	private bool UpdatePlanet = true;
+	public bool UpdatePlanet = true;
 	[Export] public PlanetCamera originCamera;
 
 	[Export]
@@ -51,6 +51,8 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 	[Export] public Key PauseKey = Key.F1;
 	private bool useVertexKernel = false;
 
+	[Export] public float PlanetRadius = 500f;
+
 	[Export]
 	public bool UseVertexKernel {
 		get => useVertexKernel;
@@ -64,9 +66,9 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 	private void OnOriginRebased(Vector3 origin, Vector3 _delta) {
 		dummyVertKernel.GetUniformBuffer("SphereTestBuffer").SetBuffer(new Dictionary<StringName, Variant> {
 			{"origin", origin},
-			{"sphere_radius", SphereRadius}
+			{"sphere_radius", PlanetRadius}
 		});
-		var sphere_dims = new Vector3(SphereRadius, SphereRadius, SphereRadius);
+		var sphere_dims = new Vector3(PlanetRadius, PlanetRadius, PlanetRadius);
 		CustomAabb = new Aabb(-sphere_dims - origin, sphere_dims * 2f);
 	}
 
@@ -98,7 +100,7 @@ public partial class CBTTestMesh : DynamicMeshInstance3D {
 
 	public override void _Process(double delta) {
 		if (UpdatePlanet) UpdateCBTrees();
-		else RedisplaceVerts();
+		else if (useVertexKernel) RedisplaceVerts();
 	}
 
 	private void ApplyMode() {

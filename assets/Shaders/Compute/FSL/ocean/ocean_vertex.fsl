@@ -59,12 +59,12 @@ kernel[32, 1, 1] oceanVertexPlanet(g_id : GlobalInvocationID) {
 	f32x3 vertex_displacement = f32x3(0);
 	for (i32 cascade = 0; cascade < paramsBuffer.numCascades; cascade++) {
 		f32 tile_length = paramsBuffer.cascadeParams[cascade].x;
-		f32x2 coords = (vert.xz - origin.xz) / tile_length;
+		f32x2 coords = vert.xz / tile_length;
 		f32x3 tex_sample = textureLod(heightTexture, f32x3(coords, f32(cascade)), 0.0).xyz;
 		vertex_displacement += tex_sample;
 	}
 	f32 dist_factor = clamp(exp(-(length(vert.xz - cam.camera_pos.xz) - cutoff_params.x)*cutoff_params.y), 0.05, 1.0);
 	vertex_attrs[vert_index] = f32x4(vert.xz, vertex_displacement.y, dist_factor);
-	vert += vertex_displacement * f32x3(1.0, dist_factor, 1.0);
+	vert = fma(vertex_displacement, f32x3(1.0, dist_factor, 1.0), vert);
 	output_vertices[vert_index] = Vertex(vert.x, vert.y, vert.z);
 }

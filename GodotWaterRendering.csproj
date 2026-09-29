@@ -19,7 +19,6 @@
     <Content Include="assets\Shaders\Compute\FSL\mesh\cbs_vertex_includes.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\cbtree_kernels.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\halfedge\halfedge_defs.fsl" />
-    <Content Include="assets\Shaders\Compute\FSL\mesh\halfedge\halfedge_util.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\mesh_common.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\mesh_gen.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\ocean\complex.fsl" />

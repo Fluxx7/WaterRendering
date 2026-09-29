@@ -1,3 +1,5 @@
+// double-precision emulation code written by Claude, didn't feel like figuring that out myself
+
 struct df32 { f32 hi; f32 lo; };
 
 // s + err == a + b exactly, for any a, b.

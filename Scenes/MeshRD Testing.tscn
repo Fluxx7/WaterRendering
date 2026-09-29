@@ -3,6 +3,12 @@
 [ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="1_hrjth"]
 [ext_resource type="Script" uid="uid://btptuvdnd2xtk" path="res://assets/Scripts/Mesh/CBTTestMesh.cs" id="2_hrjth"]
 [ext_resource type="Shader" uid="uid://qif3o50i1xb7" path="res://Scenes/test_mesh.gdshader" id="3_hrjth"]
+[ext_resource type="Script" uid="uid://bafj848r7al3l" path="res://assets/Scripts/Mesh/IcosahedronHalfEdgeMesh.cs" id="3_ia5hj"]
+
+[sub_resource type="Resource" id="Resource_xaprp"]
+script = ExtResource("3_ia5hj")
+Radius = 10.0
+metadata/_custom_type_script = "uid://bafj848r7al3l"
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_k102q"]
 render_priority = 0
@@ -23,7 +29,7 @@ sky = SubResource("Sky_xaprp")
 [node name="MeshRdTesting" type="Node3D" unique_id=2128543491]
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=2026046529]
-transform = Transform3D(1, 0, 0, 0, 0.99999994, 0, 0, 0, 0.99999994, 0, 0, 20)
+transform = Transform3D(1, 0, 0, 0, 0.99999994, 0, 0, 0, 0.99999994, 0, 0, 10)
 current = true
 script = ExtResource("1_hrjth")
 
@@ -68,10 +74,9 @@ script = ExtResource("2_hrjth")
 Mode = 1
 ToggleKey = 70
 PauseKey = 80
-UseVertexKernel = true
-Size = Vector2(10, 10)
+PlanetRadius = 10.0
+MeshData = SubResource("Resource_xaprp")
 MaxDepth = 18
-BaseSubdivisions = 4
 SurfaceMaterial = SubResource("ShaderMaterial_k102q")
 TriangleSize = 45
 metadata/_custom_type_script = "uid://dflvs4xa2855f"

@@ -57,7 +57,7 @@ void fragment() {
 	SPECULAR = specular;
 	ALBEDO = vec3(1);
 	IRRADIANCE = vec4(0.0, 0.0, 0.0, 1.0);
-	NORMAL = mix((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, (VIEW_MATRIX * vec4(local_normal,0.0)).xyz, dist_factor);
+	NORMAL = (VIEW_MATRIX * vec4(mix(vec3(0.0, 1.0, 0.0), local_normal, dist_factor), 0.0)).xyz;
 }
 
 void light() {

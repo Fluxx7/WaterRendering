@@ -46,19 +46,15 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	private bool _cbtSizeDirty = false;
 
 	private uint maxDepth = 16;
-	private uint _baseSubdivisions = 16;
 	private uint maxBisectorCount;
 	
 	protected FSLUniformBuffer cameraInfoBuffer;
 	public bool Update = true;
 	private bool customVertexKernel = false;
 
-	[Export] public bool renderCube = false;
+	[Export] public HalfEdgeMesh MeshData;
 
 	[Export(PropertyHint.Range, "1, 64,")] public uint UpdatesPerFrame = 1;
-
-	[Export] public Vector2 PlaneSize = new(500f, 500f);
-	[Export] public float SphereRadius = 500f;
 	
 	[Export]
 	public uint MaxDepth {
@@ -67,25 +63,6 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 			_cbtSizeDirty = true;
 			maxDepth = value;
 			rebuildQueued = true;
-		}
-	}
-
-	[Export(PropertyHint.Range, "0, 2048, 1")]
-	public uint BaseSubdivisions {
-		get => _baseSubdivisions;
-		set {
-			_baseSubdivisions = value;
-			_cbtSizeDirty = true;
-			rebuildQueued = true;
-		}
-	}
-	
-	private uint CbtDepth {
-		get {
-			var roots = 4ul * _baseSubdivisions * _baseSubdivisions;
-			uint minDepth = 0;
-			while ((1ul << (int)minDepth) < roots) minDepth++;
-			return Math.Max(maxDepth, minDepth);
 		}
 	}
 
@@ -160,14 +137,12 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 
 	enum MeshLoadStage {
 		READY,
-		PENDING_NUM_HALFEDGES,
-		NUM_HALFEDGES_READY,
 		PENDING_NUM_FACES,
-		NUM_FACES_READY
+		NUM_FACES_READY,
+		MESH_DATA_NULL
 	}
 
 	private MeshLoadStage loadStage = MeshLoadStage.READY;
-	private uint numFaces, numHalfEdges;
 
 	private void OnFramePreDraw() {
 		if (needsInit) return;
@@ -180,9 +155,6 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		
 		if (loadStage != MeshLoadStage.READY) {
 			switch (loadStage) {
-				case MeshLoadStage.NUM_HALFEDGES_READY: {
-					IndexHalfEdgeFaces();
-				} break;
 				case MeshLoadStage.NUM_FACES_READY: {
 					SeedRootBisectors();
 				} break;
@@ -243,7 +215,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	public void EnableCustom0Buffer(FSLVertexBuffer custom0_buffer) {
 		custom0Buffer = custom0_buffer;
 		custom0Buffer.SetVertexSizeBytes(16);
-		custom0Buffer.SetVertexCount(numVertices);
+		if (loadStage == MeshLoadStage.READY) custom0Buffer.SetVertexCount(numVertices);
 		custom0Buffer.ConnectAndCall(Callable.From((Rid new_rid) => {
 			custom0BufferId = new_rid;
 		}));
@@ -270,8 +242,10 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	
 	private void LinkVertexKernel() {
 		customVertexKernel = true;
-		localVertBuffer.SetVertexCount(numVertices);
-		finalVertBuffer.CopyTo(localVertBuffer);
+		if (loadStage == MeshLoadStage.READY) {
+			localVertBuffer.SetVertexCount(numVertices);
+			finalVertBuffer.CopyTo(localVertBuffer);
+		}
 		cbtGroup.AssignResource(localVertBuffer, "InternalVertexBuffer");
 		vertexKernel.AssignResource(localVertBuffer, "VertexInputBuffer");
 		vertexKernel.AssignResource(finalVertBuffer, "VertexOutputBuffer");
@@ -289,7 +263,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	}
 
 	private void UpdateCBTreeDepth() {
-		uint depth = CbtDepth;
+		uint depth = MaxDepth;
 		maxBisectorCount = 1u << (int)depth;
 		cbTreeBuffer.SetUnsizedElementCount(maxBisectorCount * 2);
 		
@@ -319,7 +293,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		simplifyingBisectors.SetUnsizedElementCount(maxBisectorCount);
 		propagatingBisectors.SetUnsizedElementCount(maxBisectorCount);
 		bisectorIndices.SetUnsizedElementCount(maxBisectorCount);
-		LoadHalfEdgeMesh(halfEdgeBuffer, halfedgeVerts);
+		LoadHalfEdgeMesh();
 	}
 	
 	
@@ -334,7 +308,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		
 		finalVertBuffer = cbtGroup.GetVertexBuffer("VertexBuffer");
 		localVertBuffer = cbtGroup.GetVertexBuffer("InternalVertexBuffer");
-		maxBisectorCount = 1u << (int)CbtDepth;
+		maxBisectorCount = 1u << (int)MaxDepth;
 		
 		UpdateTriangleSizeBuffer();
 		
@@ -372,6 +346,10 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
 		cameraInfoBuffer = cbtGroup.GetUniformBuffer("CameraBuffer");
 		
+		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
+		halfedgeVerts = cbtGroup.GetVertexBuffer("HalfEdgeVertexBuffer");
+		halfedgeVerts.SetVertexSizeBytes(12);
+		
 		bisectKernel.AssignResource(bisectorBuffer, "BisectorBuffer");
 		bisectKernel.AssignResource(bisectorNeighbors, "NeighborsCopyBuffer");
 		bisectKernel.AssignResource(bisectorNeighborsCopy, "NeighborsBuffer");
@@ -384,9 +362,8 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		
 		InitMeshLoadPlan();
 		RebuildCBTGenPlan();
-		if (renderCube) BuildHalfEdgeCubeMesh();
-		else BuildHalfEdgePlaneMesh();
 		UpdateCBTreeDepth();
+		MeshData.Changed += LoadHalfEdgeMesh;
 		rebuildQueued = false;
 	}
 
@@ -410,8 +387,8 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 			.AddKernelIndirect(cbtGroup.GetKernel("simplify"), dispatchBuffer, 84)
 			.AddBarrier()
 			.AddKernelIndirect(cbtGroup.GetKernel("propagateSimplify"), dispatchBuffer, 96);
-		for (uint i = 1; i <= CbtDepth; i++) {
-			uint d = CbtDepth - i;
+		for (uint i = 1; i <= MaxDepth; i++) {
+			uint d = MaxDepth - i;
 			var maxThreads = (uint)Math.Pow(2, d);
 			cbtreeUpdateBase.AddBarrier().AddKernel(cbtGroup.GetKernel("sumReduction"), maxThreads, 1, 1, new Dictionary<StringName, Variant> {
 				{"d", d},
@@ -434,6 +411,10 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	private ComputePlan meshLoadInitPlan;
 
 	private void InitMeshLoadPlan() {
+		if (MeshData == null) {
+			loadStage = MeshLoadStage.MESH_DATA_NULL;
+			return;
+		}
 		halfedgeFaceBuffer = cbtGroup.GetStorageBuffer("HalfEdgeFaceBuffer");
 		meshLoadInitPlan = ComputePlan.MakeNew();
 		meshLoadInitPlan.AddKernelWorkgroups(cbtGroup.GetKernel("prepHalfEdgeLoad"), 1, 1, 1)
@@ -445,20 +426,18 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		loadStage = MeshLoadStage.PENDING_NUM_FACES;
 		meshLoadInitPlan.Dispatch();
 		halfedgeFaceBuffer.GetBufferValuesBytesAsync(Callable.From((byte[] vals) => SetNumFaces(vals)), 0, 4);
-		halfedgeDispatchBuffer.GetBufferValuesBytesAsync(Callable.From((byte[] vals) => { 
-			var dispatch_data_out = new uint[3];
-			Buffer.BlockCopy(vals, 0, dispatch_data_out, 0, 12);
-			GD.Print($"dispatch size: {dispatch_data_out[0]}x, {dispatch_data_out[1]}y, {dispatch_data_out[2]}z");
-		}));
 	}
+
+	private uint numFaces;
+	
 	private void SeedRootBisectors() {
 		ComputePlan.MakeNew().AddKernel(cbtGroup.GetKernel("loadHalfEdgeMesh"), numFaces, 1, 1)
 			.AddKernelIndirect(cbtGroup.GetKernel("makeRootBisectors"), halfedgeDispatchBuffer, 0)
 			.Dispatch();
 		loadStage = MeshLoadStage.READY;
 		
-		for (uint i = 1; i <= CbtDepth; i++) {
-			uint d = CbtDepth - i;
+		for (uint i = 1; i <= MaxDepth; i++) {
+			uint d = MaxDepth - i;
 			var maxThreads = (uint)Math.Pow(2, d);
 			cbtGroup.Dispatch("sumReduction", maxThreads, 1, 1, new Dictionary<StringName, Variant> {
 				{"d", d},
@@ -481,79 +460,20 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		}
 		vertexIndices.SetUnsizedElementCount(numVertices);
 		if (useCustom0Buffer) custom0Buffer.SetVertexCount(numVertices);
-		GD.Print($"num_faces: {numFaces}");
 		loadStage = MeshLoadStage.NUM_FACES_READY;
 	}
 	
-	private void SetNumHalfEdges(byte[] halfedge_buffer_vals) {
-		var buffer_data_out = new uint[1];
-		Buffer.BlockCopy(halfedge_buffer_vals, 0, buffer_data_out, 0, 4);
-		numHalfEdges = buffer_data_out[0];
-		GD.Print($"num_halfedges: {numHalfEdges}");
-		halfedgeFaceBuffer.SetUnsizedElementCount(numHalfEdges);
-		loadStage = MeshLoadStage.NUM_HALFEDGES_READY;
-	}
-	
-	private void LoadHalfEdgeMesh(FSLStorageBuffer halfedge_buffer, FSLVertexBuffer he_vert_buffer) {
-		loadStage = MeshLoadStage.PENDING_NUM_HALFEDGES;
-		cbtGroup.AssignResource(halfedge_buffer, "HalfEdgeBuffer");
-		cbtGroup.AssignResource(he_vert_buffer, "HalfEdgeVertexBuffer");
-		halfedge_buffer.GetBufferValuesBytesAsync(Callable.From((byte[] halfedge_buffer_data) => SetNumHalfEdges(halfedge_buffer_data)), 0, 4);
-	}
-	
-	
-	private void BuildHalfEdgePlaneMesh() {
-		uint num_faces = BaseSubdivisions * BaseSubdivisions;
-		uint num_halfedges = num_faces * 4;
-		halfedgeVerts = cbtGroup.GetVertexBuffer("HalfEdgeVertexBuffer");
-		halfedgeVerts.SetVertexSizeBytes(12);
-		halfedgeVerts.SetVertexCount(num_halfedges);
-		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
-		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
+	private void LoadHalfEdgeMesh() {
+		halfEdgeBuffer.SetUnsizedElementCount(MeshData.NumHalfEdges);
+		halfEdgeBuffer.SetBufferBytes(MeshData.HalfEdgeBytes);
+		halfedgeVerts.SetVertexCount(MeshData.NumVerts);
+		halfedgeVerts.SetBufferBytes(MeshData.VertexBytes);
+		halfedgeFaceBuffer.SetUnsizedElementCount(MeshData.NumHalfEdges);
+		meshAabb = MeshData.GetAABB();
 		
-		cbtGroup.Dispatch("planeMeshHalfEdge", _baseSubdivisions, _baseSubdivisions, 1, new Dictionary<StringName, Variant> {
-			{"sizeX", PlaneSize.X},
-			{"sizeY", PlaneSize.Y},
-			{ "edges_per_side", _baseSubdivisions}
-		});
-
-		meshAabb = Engine.IsEditorHint()
-			? new Aabb(new Vector3(-PlaneSize.X * 0.5f, -1f, -PlaneSize.Y * 0.5f),
-				new Vector3(PlaneSize.X, 1f, PlaneSize.Y))
-			: new Aabb(new Vector3(-PlaneSize.X * 0.5f, -1f, -PlaneSize.Y * 0.5f),
-				new Vector3(PlaneSize.X, 100f, PlaneSize.Y));
-	}
-	
-	private void BuildHalfEdgeCubeMesh() {
-		uint num_halfedges = 24;
-		halfedgeVerts = cbtGroup.GetVertexBuffer("HalfEdgeVertexBuffer");
-		halfedgeVerts.SetVertexSizeBytes(12);
-		halfedgeVerts.SetVertexCount(num_halfedges);
-		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
-		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
-		
-		cbtGroup.Dispatch("cubeMeshHalfEdge", 6, 1, 1, new Dictionary<StringName, Variant> {
-			{"size", 2f}
-		});
-
-		meshAabb = new Aabb(new Vector3(-SphereRadius, -SphereRadius, -SphereRadius),
-			new Vector3(SphereRadius * 2f, SphereRadius * 2f, SphereRadius * 2f));
-	}
-	
-	private void BuildHalfEdgeIcosahedronMesh() {
-		uint num_faces = BaseSubdivisions * BaseSubdivisions;
-		uint num_halfedges = num_faces * 4;
-		halfedgeVerts = cbtGroup.GetVertexBuffer("HalfEdgeVertexBuffer");
-		halfedgeVerts.SetVertexSizeBytes(12);
-		halfedgeVerts.SetVertexCount(num_halfedges);
-		halfEdgeBuffer = cbtGroup.GetStorageBuffer("HalfEdgeBuffer");
-		halfEdgeBuffer.SetUnsizedElementCount(num_halfedges);
-		
-		cbtGroup.Dispatch("icosahedronMeshHalfEdge", _baseSubdivisions, _baseSubdivisions, 1, new Dictionary<StringName, Variant> {
-			{"sizeX", PlaneSize.X},
-			{"sizeY", PlaneSize.Y},
-			{ "edges_per_side", _baseSubdivisions}
-		});
+		loadStage = MeshLoadStage.PENDING_NUM_FACES;
+		meshLoadInitPlan.Dispatch();
+		halfedgeFaceBuffer.GetBufferValuesBytesAsync(Callable.From((byte[] vals) => SetNumFaces(vals)), 0, 4);
 	}
 	
 }

@@ -10,6 +10,11 @@
 [ext_resource type="Script" uid="uid://bah4queektnbk" path="res://assets/Scripts/Utility/SunController.cs" id="6_h38u3"]
 [ext_resource type="Script" uid="uid://pcg032ja3p6u" path="res://assets/Scripts/Ocean/FastWaterController.cs" id="7_h38u3"]
 [ext_resource type="Script" uid="uid://chwbapmqhb2go" path="res://assets/Scripts/Utility/AltitudeLabel.cs" id="9_g5ndq"]
+[ext_resource type="Script" uid="uid://bafj848r7al3l" path="res://assets/Scripts/Mesh/IcosahedronHalfEdgeMesh.cs" id="11_wd68g"]
+
+[sub_resource type="Resource" id="Resource_wd68g"]
+script = ExtResource("11_wd68g")
+metadata/_custom_type_script = "uid://bafj848r7al3l"
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_w2yos"]
 render_priority = 0
@@ -40,6 +45,10 @@ albedo_color = Color(18.754, 18.892, 14.761, 1)
 material = SubResource("StandardMaterial3D_w2yos")
 radius = 695507970.0
 height = 1400000000.0
+
+[sub_resource type="Resource" id="Resource_p6owy"]
+script = ExtResource("11_wd68g")
+metadata/_custom_type_script = "uid://bafj848r7al3l"
 
 [node name="CelestialBodyTesting" type="Node3D" unique_id=487021627]
 
@@ -137,7 +146,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 rotation_edit_mode = 0
 rotation_order = 2
 top_level = false
-visible = false
+visible = true
 visibility_parent = NodePath("")
 layers = 1
 sorting_offset = 0.0
@@ -162,9 +171,9 @@ originCamera = NodePath("../Camera3D")
 Mode = 0
 ToggleKey = 70
 PauseKey = 80
+PlanetRadius = 6000000.0
 UseVertexKernel = true
-renderCube = true
-SphereRadius = 6000000.0
+MeshData = SubResource("Resource_wd68g")
 MaxDepth = 19
 SurfaceMaterial = SubResource("ShaderMaterial_w2yos")
 TriangleSize = 25
@@ -199,7 +208,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 rotation_edit_mode = 0
 rotation_order = 2
 top_level = false
-visible = true
+visible = false
 visibility_parent = NodePath("")
 layers = 1
 sorting_offset = 0.0
@@ -221,12 +230,12 @@ visibility_range_end_margin = 0.0
 visibility_range_fade_mode = 0
 script = ExtResource("6_5d5fy")
 originCamera = NodePath("../Camera3D")
+PlanetRadius = 6000000.0
 debugWindow = NodePath("../Debug Controls")
 debugWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Debug View")
 visualsWindow = NodePath("../Visual Controls")
 visualsWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
-renderCube = true
-SphereRadius = 6000000.0
+MeshData = SubResource("Resource_p6owy")
 MaxDepth = 18
 metadata/_custom_type_script = "uid://lvs0bwu86cmm"
 
