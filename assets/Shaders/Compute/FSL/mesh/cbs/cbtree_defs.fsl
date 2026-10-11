@@ -37,6 +37,19 @@ i32 get_nth_high_bit(i32 index) {
 	return bitID - i32(cbt_capacity);
 }
 
+
+i32 get_nth_high_bit(u32 index) {
+	i32 bitID = 1;
+	while (bitID < cbt_capacity) {
+		bitID *= 2;
+		if (index >= cbtree.data[bitID]) {
+			index -= cbtree.data[bitID];
+			bitID++;
+		}
+	}
+	return bitID - i32(cbt_capacity);
+}
+
 i32 get_nth_low_bit(i32 index) {
 	i32 bitID = 1;
 	i32 c = i32(cbt_capacity >> 1);

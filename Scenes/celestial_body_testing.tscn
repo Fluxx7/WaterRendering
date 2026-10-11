@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://2i5jb0ecmgdm" path="res://assets/Scripts/Utility/PlanetCamera.cs" id="1_irlwx"]
 [ext_resource type="Script" uid="uid://btptuvdnd2xtk" path="res://assets/Scripts/Mesh/CBTTestMesh.cs" id="2_c4s6b"]
 [ext_resource type="Shader" uid="uid://qif3o50i1xb7" path="res://Scenes/test_mesh.gdshader" id="3_irlwx"]
+[ext_resource type="Script" uid="uid://dmxuij5oqme0c" path="res://assets/Scripts/Ocean/Utility/OceanVisualControlsWindow.cs" id="3_wd68g"]
 [ext_resource type="Shader" uid="uid://djcpu03u1yvx5" path="res://assets/Shaders/space_sky.gdshader" id="4_cqv0n"]
 [ext_resource type="CompressedCubemap" uid="uid://d1r0l2acbe31n" path="res://assets/Textures/space_skybox/space_skybox_3x2.png" id="5_cvkex"]
 [ext_resource type="Script" uid="uid://lvs0bwu86cmm" path="res://assets/Scripts/Ocean/OceanPlanet.cs" id="6_5d5fy"]
@@ -12,8 +13,9 @@
 [ext_resource type="Script" uid="uid://chwbapmqhb2go" path="res://assets/Scripts/Utility/AltitudeLabel.cs" id="9_g5ndq"]
 [ext_resource type="Script" uid="uid://bafj848r7al3l" path="res://assets/Scripts/Mesh/IcosahedronHalfEdgeMesh.cs" id="11_wd68g"]
 
-[sub_resource type="Resource" id="Resource_wd68g"]
+[sub_resource type="Resource" id="Resource_ia5hj"]
 script = ExtResource("11_wd68g")
+Radius = 1.0
 metadata/_custom_type_script = "uid://bafj848r7al3l"
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_w2yos"]
@@ -46,8 +48,9 @@ material = SubResource("StandardMaterial3D_w2yos")
 radius = 695507970.0
 height = 1400000000.0
 
-[sub_resource type="Resource" id="Resource_p6owy"]
+[sub_resource type="Resource" id="Resource_t1k73"]
 script = ExtResource("11_wd68g")
+Radius = 1.0
 metadata/_custom_type_script = "uid://bafj848r7al3l"
 
 [node name="CelestialBodyTesting" type="Node3D" unique_id=487021627]
@@ -88,10 +91,12 @@ layout_mode = 2
 toggle_mode = true
 text = "Water Controls"
 
-[node name="Visual Controls" type="Button" parent="CanvasLayer/VBoxContainer" unique_id=23004161]
+[node name="Visual Controls" type="Button" parent="CanvasLayer/VBoxContainer" unique_id=23004161 node_paths=PackedStringArray("window")]
 layout_mode = 2
 toggle_mode = true
 text = "Visual Controls"
+script = ExtResource("3_wd68g")
+window = NodePath("../../../Visual Controls")
 
 [node name="Visual Controls" type="Window" parent="." unique_id=209137216]
 oversampling_override = 1.0
@@ -173,7 +178,7 @@ ToggleKey = 70
 PauseKey = 80
 PlanetRadius = 6000000.0
 UseVertexKernel = true
-MeshData = SubResource("Resource_wd68g")
+MeshData = SubResource("Resource_ia5hj")
 MaxDepth = 19
 SurfaceMaterial = SubResource("ShaderMaterial_w2yos")
 TriangleSize = 25
@@ -195,7 +200,7 @@ OriginCamera = NodePath("../Camera3D")
 cast_shadow = 0
 mesh = SubResource("SphereMesh_irlwx")
 
-[node name="OceanPlanet" type="GeometryInstance3D" parent="." unique_id=1406993241 node_paths=PackedStringArray("originCamera", "debugWindow", "debugWindowToggle", "visualsWindow", "visualsWindowToggle")]
+[node name="OceanPlanet" type="GeometryInstance3D" parent="." unique_id=1406993241 node_paths=PackedStringArray("originCamera", "debugWindow", "debugWindowToggle", "visualsWindow")]
 unique_name_in_owner = false
 process_mode = 0
 process_priority = 0
@@ -233,9 +238,8 @@ originCamera = NodePath("../Camera3D")
 PlanetRadius = 6000000.0
 debugWindow = NodePath("../Debug Controls")
 debugWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Debug View")
-visualsWindow = NodePath("../Visual Controls")
-visualsWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
-MeshData = SubResource("Resource_p6owy")
+visualsWindow = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
+MeshData = SubResource("Resource_t1k73")
 MaxDepth = 18
 metadata/_custom_type_script = "uid://lvs0bwu86cmm"
 

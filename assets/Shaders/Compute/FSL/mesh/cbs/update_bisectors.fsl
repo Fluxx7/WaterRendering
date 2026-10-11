@@ -151,12 +151,18 @@ void neighbor_shared_edges(i32 b_index, i32 n_index, out i32 even_edge, out i32 
 	}	
 }
 
+QVertex midpoint(QVertex v0, QVertex v1) {
+	q2_62 x_mid = (v0.x >> 1) + (v1.x >> 1) + (v0.x & v1.x & 1);
+	q2_62 y_mid = (v0.y >> 1) + (v1.y >> 1) + (v0.y & v1.y & 1);
+	q2_62 z_mid = (v0.z >> 1) + (v1.z >> 1) + (v0.z & v1.z & 1);
+	return QVertex(x_mid, y_mid, z_mid);
+}
+
 void bisect_vertex(i32 b_index, i32 new_index) {
 	i32x4 parent_verts = bisector_indices[b_index];
-	f32x3 v0 = vertex_to_f32x3(internal_vertices[parent_verts.x]);
-	f32x3 v1 = vertex_to_f32x3(internal_vertices[parent_verts.y]);
-	f32x3 new_vert = (v0 + v1) / 2;
-	internal_vertices[new_index] = f32x3_to_vertex(new_vert);
+	QVertex v0 = internal_vertices[parent_verts.x];
+	QVertex v1 = internal_vertices[parent_verts.y];
+	internal_vertices[new_index] = midpoint(v0, v1);
 	set_vertex_leaf(new_index, 1);
 }
 

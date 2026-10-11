@@ -3,7 +3,7 @@
 struct df32 { f32 hi; f32 lo; };
 
 // s + err == a + b exactly, for any a, b.
-df32 two_sum(precise f32 a, precise f32 b) {
+df32 two_sum(f32 a, f32 b) {
 	precise f32 s = a + b;
 	precise f32 bb = s - a;
 	precise f32 err = (a - (s - bb)) + (b - bb);
@@ -11,14 +11,14 @@ df32 two_sum(precise f32 a, precise f32 b) {
 }
 
 // Same, but only valid when |a| >= |b|. Cheaper; used to renormalise.
-df32 fast_two_sum(precise f32 a, precise f32 b) {
+df32 fast_two_sum(f32 a, f32 b) {
 	precise f32 s = a + b;
 	precise f32 err = b - (s - a);
 	return df32(s, err);
 }
 
 // p + err == a * b exactly. fma rounds once, so it recovers the product's rounding error.
-df32 two_prod(precise f32 a, precise f32 b) {
+df32 two_prod(f32 a, f32 b) {
 	precise f32 p = a * b;
 	precise f32 err = fma(a, b, -p);
 	return df32(p, err);

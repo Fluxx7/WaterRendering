@@ -29,11 +29,11 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	}
 
 	private bool useCustom0Buffer = false;
-	private FSLVertexBuffer localVertBuffer, finalVertBuffer, custom0Buffer;
+	private FSLVertexBuffer finalVertBuffer, custom0Buffer;
 	private FSLIndexBuffer indexBuffer;
 	private FSLStorageBuffer dispatchBuffer, vertexDispatchBuffer, halfedgeDispatchBuffer;
 	private FSLStorageBuffer commandBuffer;
-	private FSLStorageBuffer bisectorBuffer, bisectorIDs, bisectorNeighbors, bisectorNeighborsCopy, bisectorIndices, vertexIndices;
+	private FSLStorageBuffer localVertBuffer, bisectorBuffer, bisectorIDs, bisectorNeighbors, bisectorNeighborsCopy, bisectorIndices, vertexIndices;
 	private FSLStorageBuffer cbTreeBuffer, cbtDataBuffer, halfEdgeBuffer, vertexBitfieldBuffer;
 	private FSLStorageBuffer splitBisectors, allocatingBisectors, mergeBisectors, simplifyingBisectors, propagatingBisectors;
 	private uint numVertices, numIndices;
@@ -242,24 +242,20 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 	
 	private void LinkVertexKernel() {
 		customVertexKernel = true;
-		if (loadStage == MeshLoadStage.READY) {
-			localVertBuffer.SetVertexCount(numVertices);
-			finalVertBuffer.CopyTo(localVertBuffer);
-		}
-		cbtGroup.AssignResource(localVertBuffer, "InternalVertexBuffer");
 		vertexKernel.AssignResource(localVertBuffer, "VertexInputBuffer");
 		vertexKernel.AssignResource(finalVertBuffer, "VertexOutputBuffer");
 		vertexKernel.AssignResource(cameraInfoBuffer, "CameraBuffer");
 		vertexKernel.AssignResource(vertexIndices, "VertexCountBuffer");
+		cbtreeUpdate = ComputePlan.MakeNew();
+		cbtreeUpdate.AddPlan(cbtreeUpdateBase);
 		cbtreeUpdate.AddBarrier().AddKernelIndirect(vertexKernel, vertexDispatchBuffer, 0);
 	}
 
 	private void UnlinkVertexKernel() {
 		customVertexKernel = false;
-		localVertBuffer.CopyTo(finalVertBuffer);
-		cbtGroup.AssignResource(finalVertBuffer, "InternalVertexBuffer");
 		cbtreeUpdate = ComputePlan.MakeNew();
 		cbtreeUpdate.AddPlan(cbtreeUpdateBase);
+		cbtreeUpdate.AddBarrier().AddKernelIndirect(cbtGroup.GetKernel("defaultVertex"), vertexDispatchBuffer, 0);
 	}
 
 	private void UpdateCBTreeDepth() {
@@ -307,14 +303,12 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		halfedgeDispatchBuffer = cbtGroup.GetStorageBuffer("LoadDispatchBuffer");
 		
 		finalVertBuffer = cbtGroup.GetVertexBuffer("VertexBuffer");
-		localVertBuffer = cbtGroup.GetVertexBuffer("InternalVertexBuffer");
+		localVertBuffer = cbtGroup.GetStorageBuffer("InternalVertexBuffer");
 		maxBisectorCount = 1u << (int)MaxDepth;
 		
 		UpdateTriangleSizeBuffer();
 		
 		finalVertBuffer.SetVertexSizeBytes(12);
-		localVertBuffer.SetVertexSizeBytes(12);
-		cbtGroup.AssignResource(finalVertBuffer, "InternalVertexBuffer");
 		indexBuffer = cbtGroup.GetIndexBuffer("IndexBuffer");
 		indexBuffer.SetIndexFormat(RenderingDevice.IndexBufferFormat.Uint32);
 		commandBuffer = cbtGroup.GetStorageBuffer("IndirectIndexedDrawCommandBuffer");
@@ -398,11 +392,12 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 
 		cbtreeUpdateBase.AddBarrier()
 			.AddKernelIndirect(cbtGroup.GetKernel("prepDraw"), dispatchBuffer, 0);
-		if (customVertexKernel) {
-			cbtreeUpdate.AddBarrier().AddKernelIndirect(vertexKernel, vertexDispatchBuffer, 0);
-		}
+		
 		cbtreeUpdate = ComputePlan.MakeNew();
 		cbtreeUpdate.AddPlan(cbtreeUpdateBase);
+		cbtreeUpdate.AddBarrier()
+			.AddKernelIndirect(customVertexKernel ? vertexKernel : cbtGroup.GetKernel("defaultVertex"),
+				vertexDispatchBuffer, 0);
 	}
 
 	private FSLVertexBuffer halfedgeVerts;
@@ -455,9 +450,7 @@ public partial class DynamicMeshInstance3D : GeometryInstance3D {
 		numFaces = buffer_data_out[0];
 		numVertices = Math.Max(66537, maxBisectorCount + numFaces); 
 		finalVertBuffer.SetVertexCount(numVertices);
-		if (customVertexKernel) {
-			localVertBuffer.SetVertexCount(numVertices);
-		}
+		localVertBuffer.SetUnsizedElementCount(numVertices);
 		vertexIndices.SetUnsizedElementCount(numVertices);
 		if (useCustom0Buffer) custom0Buffer.SetVertexCount(numVertices);
 		loadStage = MeshLoadStage.NUM_FACES_READY;

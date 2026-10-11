@@ -1,0 +1,29 @@
+// Metal doesn't support double-precision floats, and they're often slow on hardware that does support them
+// but everyone supports 64-bit integers, and for the root mesh, we don't need a giant scale variance so 
+// most of the upper exponent range of any floating-point representation is wasted
+// so this file has definitions for conversions to and from a fixed-point representation
+
+#define q2_62 i64
+
+const i32 _fract_bits = 62;
+const f32 _scale_factor = f32(i64(1) << _fract_bits);
+const f32 _scale_factor_rcp = 1.0f / _scale_factor;
+
+f32 q2_62_to_f32(q2_62 val) {
+	f32 val_62 = f32(val);
+	return val_62 * _scale_factor_rcp;
+}
+
+q2_62 f32_to_q2_62(f32 val) {
+	f32 val_62 = val * _scale_factor;
+	return q2_62(val_62);
+}
+
+#include "double_precision.fsl"
+
+df32 q2_62_to_df32(q2_62 val) {
+	f32 hi = q2_62_to_f32(val);
+	q2_62 hi_q = f32_to_q2_62(hi);
+	f32 lo = q2_62_to_f32(val - hi_q);
+	return df32(hi, lo);
+}

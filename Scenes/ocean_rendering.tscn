@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://cpwjm2lbw38ds"]
 
 [ext_resource type="Script" uid="uid://cky6u0t1f7a7w" path="res://assets/Scripts/Utility/FPSLabel.cs" id="1_jpx6j"]
+[ext_resource type="Script" uid="uid://dmxuij5oqme0c" path="res://assets/Scripts/Ocean/Utility/OceanVisualControlsWindow.cs" id="2_6o0ry"]
 [ext_resource type="Script" uid="uid://ddumaw17bksl1" path="res://assets/Scripts/Ocean/SpectrumWater.cs" id="3_3df1w"]
 [ext_resource type="Script" uid="uid://xej8t0fp0kiu" path="res://assets/Scripts/Mesh/PlaneHalfEdgeMesh.cs" id="4_3df1w"]
 [ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="4_62ipq"]
@@ -10,8 +11,9 @@
 rayleigh_color = Color(0.145, 0.29724994, 0.58, 1)
 mie_color = Color(0.6561, 0.70483506, 0.81, 1)
 turbidity = 17.04
+sun_disk_scale = 0.0
 ground_color = Color(0.06666667, 0.12156863, 0.25882354, 1)
-energy_multiplier = 5.55
+energy_multiplier = 5.0
 
 [sub_resource type="Sky" id="Sky_xaprp"]
 sky_material = SubResource("PhysicalSkyMaterial_ebsym")
@@ -32,7 +34,7 @@ fog_depth_end = 4000.0
 
 [sub_resource type="Resource" id="Resource_epyer"]
 script = ExtResource("4_3df1w")
-PlaneSize = Vector2(337096580, 337096580)
+PlaneSize = Vector2(1, 1)
 BaseSubdivisions = 4
 metadata/_custom_type_script = "uid://xej8t0fp0kiu"
 
@@ -67,10 +69,12 @@ layout_mode = 2
 toggle_mode = true
 text = "Water Controls"
 
-[node name="Visual Controls" type="Button" parent="CanvasLayer/VBoxContainer" unique_id=68667409]
+[node name="Visual Controls" type="Button" parent="CanvasLayer/VBoxContainer" unique_id=68667409 node_paths=PackedStringArray("window")]
 layout_mode = 2
 toggle_mode = true
 text = "Visual Controls"
+script = ExtResource("2_6o0ry")
+window = NodePath("../../../Visual Controls")
 
 [node name="Visual Controls" type="Window" parent="." unique_id=663455485]
 oversampling_override = 1.0
@@ -108,11 +112,11 @@ script = ExtResource("4_62ipq")
 environment = SubResource("Environment_3df1w")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="WorldEnvironment" unique_id=1810442185]
-transform = Transform3D(1, 0, 0, 0, -0.99026805, 0.13917318, 0, -0.13917318, -0.99026805, 0, 13.747661, 0)
+transform = Transform3D(1, 0, 0, 0, -0.97922283, 0.2027873, 0, -0.2027873, -0.97922283, 0, 13.747661, 0)
 light_color = Color(1, 0.98483336, 0.93, 1)
-light_energy = 4.043
+light_energy = 3.0
 
-[node name="Ocean" type="GeometryInstance3D" parent="." unique_id=464920326 node_paths=PackedStringArray("debugWindow", "debugWindowToggle", "visualsWindow", "visualsWindowToggle")]
+[node name="Ocean" type="GeometryInstance3D" parent="." unique_id=464920326 node_paths=PackedStringArray("debugWindow", "debugWindowToggle", "visualsWindow")]
 unique_name_in_owner = false
 process_mode = 0
 process_priority = 0
@@ -148,8 +152,8 @@ visibility_range_fade_mode = 0
 script = ExtResource("3_3df1w")
 debugWindow = NodePath("../Debug Controls")
 debugWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Debug View")
-visualsWindow = NodePath("../Visual Controls")
-visualsWindowToggle = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
+visualsWindow = NodePath("../CanvasLayer/VBoxContainer/Visual Controls")
+PlaneSidelength = 1000000.0
 MeshData = SubResource("Resource_epyer")
 MaxDepth = 18
 metadata/_custom_type_script = "uid://dflvs4xa2855f"
@@ -160,6 +164,7 @@ _depth = 150.0
 _windSpeed = 11.0
 _windDirection = -75.0
 _fetch = 250000.0
+_philipsAmplitude = 0.005
 _spreadingStrength = 1.0
 _swell = 0.25
 controlWindow = NodePath("../../Water Controls")

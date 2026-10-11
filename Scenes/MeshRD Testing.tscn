@@ -1,13 +1,13 @@
 [gd_scene format=3 uid="uid://farsdj6y0ymp"]
 
-[ext_resource type="Script" uid="uid://b14j8uj81cqh4" path="res://assets/Scripts/Utility/ControllableCamera.cs" id="1_hrjth"]
+[ext_resource type="Script" uid="uid://2i5jb0ecmgdm" path="res://assets/Scripts/Utility/PlanetCamera.cs" id="1_ia5hj"]
 [ext_resource type="Script" uid="uid://btptuvdnd2xtk" path="res://assets/Scripts/Mesh/CBTTestMesh.cs" id="2_hrjth"]
 [ext_resource type="Shader" uid="uid://qif3o50i1xb7" path="res://Scenes/test_mesh.gdshader" id="3_hrjth"]
 [ext_resource type="Script" uid="uid://bafj848r7al3l" path="res://assets/Scripts/Mesh/IcosahedronHalfEdgeMesh.cs" id="3_ia5hj"]
 
 [sub_resource type="Resource" id="Resource_xaprp"]
 script = ExtResource("3_ia5hj")
-Radius = 10.0
+Radius = 1.0
 metadata/_custom_type_script = "uid://bafj848r7al3l"
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_k102q"]
@@ -28,16 +28,20 @@ sky = SubResource("Sky_xaprp")
 
 [node name="MeshRdTesting" type="Node3D" unique_id=2128543491]
 
-[node name="Camera3D" type="Camera3D" parent="." unique_id=2026046529]
+[node name="Camera3D" type="Camera3D" parent="." unique_id=2026046529 node_paths=PackedStringArray("Planet")]
 transform = Transform3D(1, 0, 0, 0, 0.99999994, 0, 0, 0, 0.99999994, 0, 0, 10)
 current = true
-script = ExtResource("1_hrjth")
+script = ExtResource("1_ia5hj")
+Planet = NodePath("../DynamicMeshInstance3D")
+PlanetRadius = 6000000.0
+MinAltitude = 0.5
+UnboundedFar = true
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=996728850]
 transform = Transform3D(1, 0, 0, 0, 0.2586681, 0.9659663, 0, -0.9659663, 0.2586681, 0, 2.948106, 0)
 light_color = Color(1.353, 1.345, 1.233, 1)
 
-[node name="DynamicMeshInstance3D" type="GeometryInstance3D" parent="." unique_id=1063955434]
+[node name="DynamicMeshInstance3D" type="GeometryInstance3D" parent="." unique_id=1063955434 node_paths=PackedStringArray("originCamera")]
 unique_name_in_owner = false
 process_mode = 0
 process_priority = 0
@@ -71,14 +75,15 @@ visibility_range_end = 0.0
 visibility_range_end_margin = 0.0
 visibility_range_fade_mode = 0
 script = ExtResource("2_hrjth")
+originCamera = NodePath("../Camera3D")
 Mode = 1
 ToggleKey = 70
 PauseKey = 80
-PlanetRadius = 10.0
+PlanetRadius = 6000000.0
+UseVertexKernel = true
 MeshData = SubResource("Resource_xaprp")
-MaxDepth = 18
+MaxDepth = 17
 SurfaceMaterial = SubResource("ShaderMaterial_k102q")
-TriangleSize = 45
 metadata/_custom_type_script = "uid://dflvs4xa2855f"
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1814401543]

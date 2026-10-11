@@ -16,8 +16,8 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 	private Vector2 _prevSize;
 	[Export] private Window debugWindow;
 	[Export] private Button debugWindowToggle;
-	[Export] private Window visualsWindow;
-	[Export] private Button visualsWindowToggle;
+	[Export] private OceanVisualControlsWindow visualsWindow;
+	[Export] public float PlaneSidelength;
 	private float _prevCameraFov;
 	private bool _simulate = true;
 	private SpinBox layerSelector = new();
@@ -26,105 +26,19 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 	private ComputeKernel oceanVertex;
 	private FastWaterController waterController;
 
-	public struct OceanVisualParameters {
-		public Color DeepColor;
-		public Color ScatterColor;
-		public float HeightScatter;
-		public float NearScatter;
-		public float GlobalScatter;
-		public float DeepColorStrength;
-	}
 
 	public struct OceanPhysicalParameters {
 		public float Gravity;
 		public float FluidSurfaceTension;
 		public float FluidDensity;
-	}
-
-	public struct OceanFoamParameters {
-		public Array<float> Whitecaps;
-		public Array<float> FoamAmounts;
-		public Array<float> FoamWeights;
+		public float AirBubbleDensity;
 	}
 
 	private OceanPhysicalParameters _physicalParams = new OceanPhysicalParameters() {
 		
 	};
-	private OceanVisualParameters _visualParams = new OceanVisualParameters() {
-		DeepColor = new Color(0x001429FF),
-		ScatterColor = new Color(0x002845FF),
-		
-	};
 	
-	#region shaderparams
 	[ExportGroup("Shader Parameters")] 
-	
-	
-	private Color _scatterColor = new(0x001821FF);
-
-	[Export]
-	public Color ScatterColor {
-		get => _scatterColor;
-		set {
-			_scatterColor = value;
-			_shader?.SetShaderParameter("water_scatter_color", value);
-		}
-	}
-
-	private Color _waterColor = new(0x00162bFF);
-
-	[Export]
-	public Color DeepWaterColor {
-		get => _waterColor;
-		set {
-			_waterColor = value;
-			_shader?.SetShaderParameter("air_bubble_color", value);
-		}
-	}
-
-	private float _heightScale = 7.31f;
-
-	[Export]
-	public float HeightScale {
-		get => _heightScale;
-		set {
-			_heightScale = value;
-			_shader?.SetShaderParameter("height_scale", value);
-		}
-	}
-
-	private float _k2 = 1.0f;
-
-	[Export]
-	public float K2 {
-		get => _k2;
-		set {
-			_k2 = value;
-			_shader?.SetShaderParameter("k2", value);
-		}
-	}
-
-	private float _k3 = 0.0f;
-
-	[Export]
-	public float K3 {
-		get => _k3;
-		set {
-			_k3 = value;
-			_shader?.SetShaderParameter("k3", value);
-		}
-	}
-
-	private float _k4 = 0.17f;
-
-	[Export]
-	public float K4 {
-		get => _k4;
-		set {
-			_k4 = value;
-			_shader?.SetShaderParameter("k4", value);
-		}
-	}
 
 	private float _bubbleDensity = 3.4f;
 
@@ -136,7 +50,6 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 			_shader?.SetShaderParameter("air_bubble_density", value);
 		}
 	}
-	#endregion
 	private float _currentSeed;
 	private float _time;
 	private Dictionary<StringName, ShaderMaterial> _debugRectShaderMats = new();
@@ -186,14 +99,21 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		if (UpdateOceanMesh) UpdateCBTrees();
 		else RedisplaceVerts();
 	}
+
+	private Color _deepColor = new (0x00162bFF);
+	private Color _scatterColor = new Color(0x001821FF);
+	private float _heightScatter = 7.31f;
+	private float _nearScatter = 1.0f;
+	private float _globalScatter = 0f;
+	private float _deepColorStrength = 0.17f;
 	
 	private void SetShaderParameters() {
-		_shader.SetShaderParameter("water_scatter_color", ScatterColor);
-		_shader.SetShaderParameter("air_bubble_color", DeepWaterColor);
-		_shader.SetShaderParameter("height_scale", HeightScale);
-		_shader.SetShaderParameter("k2", K2);
-		_shader.SetShaderParameter("k3", K3);
-		_shader.SetShaderParameter("k4", K4);
+		_shader.SetShaderParameter("water_scatter_color", _scatterColor);
+		_shader.SetShaderParameter("air_bubble_color", _deepColor);
+		_shader.SetShaderParameter("height_scale", _heightScatter);
+		_shader.SetShaderParameter("k2", _nearScatter);
+		_shader.SetShaderParameter("k3", _globalScatter);
+		_shader.SetShaderParameter("k4", _deepColorStrength);
 		_shader.SetShaderParameter("air_bubble_density", BubbleDensity);
 		_shader.SetShaderParameter("tileLengths", waterController.TileLengths);
 		_shader.SetShaderParameter("cascade_count", waterController.NumCascades);
@@ -210,6 +130,14 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		oceanVertex.GetUniformBuffer("VertexParams").SetBuffer(new Dictionary<StringName, Variant> {
 			{"cutoff_params", new Vector4(500f, 0.0005f, 0f, 0f)}
 		});
+		oceanVertex.GetUniformBuffer("PlaneInfoBuffer").SetBuffer(new Dictionary<StringName, Variant> {
+			{"plane_sidelength", PlaneSidelength}
+		});
+		CustomAabb = Engine.IsEditorHint() 
+			? new Aabb(new Vector3(-PlaneSidelength * 0.5f, -1f, -PlaneSidelength * 0.5f),
+				new Vector3(PlaneSidelength, 1f, PlaneSidelength))
+			: new Aabb(new Vector3(-PlaneSidelength * 0.5f, -100f, -PlaneSidelength * 0.5f),
+				new Vector3(PlaneSidelength, 100f, PlaneSidelength));;
 		EnableCustom0Buffer(oceanVertex.GetVertexBuffer("UVBuffer"));
 		VertexKernel = oceanVertex;
 		
@@ -227,17 +155,16 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		waterController.BindVertexUpdateShader(oceanVertex);
 		waterController.SpectrumTexturesReady += UpdateMesh;
 		waterController.PostTextures();
-		
-		SetShaderParameters();
 		SurfaceMaterial = _shader;
 		layerSelector.MaxValue = waterController.NumCascades - 1;
 		
 		if (debugWindow != null && debugWindowToggle != null) {
 			InitDebugWindow();
 		}
-		if (visualsWindow != null && visualsWindowToggle != null) {
-			InitVisualsWindow();
+		if (visualsWindow != null) {
+			LinkVisualControls();
 		}
+		SetShaderParameters();
 	}
 
 	public override void _Process(double delta) {
@@ -454,139 +381,30 @@ public partial class SpectrumWater : DynamicMeshInstance3D {
 		return newContainer;
 	}
 	
-	private HBoxContainer createFloatSelectorAction(string text, float starting_value, 
-													Range.ValueChangedEventHandler action, 
-													float min_val = 0f, float max_val = 100f, float step = 1f, bool allow_greater = false) {
-		var newContainer = new HBoxContainer();
-		var colorLabel = new Label();
-		colorLabel.Text = text;
-		
-		var valueSelector = new SpinBox();
-		valueSelector.MinValue = min_val;
-		valueSelector.MaxValue = max_val;
-		valueSelector.AllowGreater = allow_greater;
-		valueSelector.Step = step;
-		valueSelector.Value = starting_value;
-		valueSelector.ValueChanged += action;
-		
-		newContainer.AddChild(colorLabel);
-		newContainer.AddChild(valueSelector);
-		return newContainer;
-	}
-	
-	private void InitVisualsWindow() {
-		var canvasLayer = new CanvasLayer();
-		var visualControlsBox = new VBoxContainer();
-		var colorParametersBox = new VBoxContainer();
-		var lightingControlsBox = new HBoxContainer();
-		
-		HBoxContainer waterColorControls = CreateColorContainer("Deep Water Color", _waterColor, (new_color) => {
-			DeepWaterColor = new_color;
-		});
-		HBoxContainer scatterColorControls = CreateColorContainer("Scatter Color", _scatterColor, (new_color) => {
-			ScatterColor = new_color;
-		});
-		colorParametersBox.AddChild(waterColorControls);
-		colorParametersBox.AddChild(scatterColorControls);
-
-		var subParametersBox = new HBoxContainer();
-		
-		var shaderParamatersBox = new VBoxContainer();
-		{
-			var shaderParamLabel = new Label();
-			shaderParamLabel.Text = "Water Shader Parameters";
-			shaderParamatersBox.AddChild(shaderParamLabel);
-		}
-		shaderParamatersBox.AddChild(createFloatSelector("Height Scale", _heightScale, 
-			"height_scale", 
-			0f, 50f, 0.01f, true));
-		shaderParamatersBox.AddChild(createFloatSelector("K2", _k2, 
-			"k2", 
-			0f, 20f, 0.01f, true));
-		shaderParamatersBox.AddChild(createFloatSelector("K3", 
-			_k3, "k3", 
-			0f, 20f, 0.01f, true));
-		shaderParamatersBox.AddChild(createFloatSelector("K4", _k4, 
-			"k4", 
-			0f, 20f, 0.01f, true));
-		shaderParamatersBox.AddChild(createFloatSelector("Bubble Density", _bubbleDensity, 
-			"air_bubble_density", 
-			0f, 20f, 0.01f, true));
-
-		var foamParamsTabs = new TabContainer(); 
-		{
-			for (var i = 0; i < FastWaterController.MAX_CASCADES; i++) {
-				var foamParametersBox = new VBoxContainer();
-				foamParametersBox.Name = $"Cascade {i}";
-				{
-					var foamParamLabel = new Label();
-					foamParamLabel.Text = "Foam Parameters";
-					foamParametersBox.AddChild(foamParamLabel);
-				}
-				var index = i;
-				foamParametersBox.AddChild(createFloatSelectorAction("Whitecap", waterController.CascadeFoamParams[i].X,
-					value => {waterController?.SetWhitecap(index, (float) value); }, 0f, 50f, 0.01f, true));
-				foamParametersBox.AddChild(createFloatSelectorAction("Foam Amount", waterController.CascadeFoamParams[i].Y,
-					value => {waterController?.SetFoamAmount(index, (float) value); }, 0f, 50f, 0.01f, true));
-				foamParamsTabs.AddChild(foamParametersBox);
-			}
-		}
-		subParametersBox.AddChild(shaderParamatersBox);
-		subParametersBox.AddChild(foamParamsTabs);
-		
-		colorParametersBox.AddChild(subParametersBox);
-		
-		
-		{
-			var lightingLabel = new Label();
-			lightingLabel.Text = "Lighting Controls";
-			Func<string, string, bool, Button> makeButton = (label, uniform_name, needs_debug_shader) => {
-				var newButton = new Button();
-				newButton.Text = label;
-				newButton.ToggleMode = true;
-				newButton.ButtonPressed = true;
-				newButton.Toggled += (pressed) => {
-					if (currShader == OceanShader.Standard && needs_debug_shader) {
-						currShader = OceanShader.Debug;
-						_shader.SetShader(debugShader);
-						SetShaderParameters();
-					}
-					_shader.SetShaderParameter(uniform_name, pressed);
-					
-				};
-				return newButton;
-			};
-
-			Button diffuseButton = makeButton("Diffuse", "renderDiffuse", true);
-			Button specularButton = makeButton("Specular", "renderSpecular", true);
-			Button reflectionsButton = makeButton("Reflections", "renderReflections", true);
-			Button foamButton = makeButton("Foam", "renderFoam", false);
-			
-			lightingControlsBox.AddChild(lightingLabel);
-			lightingControlsBox.AddChild(diffuseButton);
-			lightingControlsBox.AddChild(specularButton);
-			lightingControlsBox.AddChild(reflectionsButton);
-			lightingControlsBox.AddChild(foamButton);
-		}
-		var mipsButton = new Button();
-		mipsButton.Text = "Use Mipmaps";
-		mipsButton.ToggleMode = true;
-		mipsButton.ButtonPressed = true;
-		mipsButton.Toggled += (pressed) => { waterController?.UseMips(pressed); };
-
-		visualControlsBox.AddChild(colorParametersBox);
-		visualControlsBox.AddChild(lightingControlsBox);
-		visualControlsBox.AddChild(mipsButton);
-		
-		canvasLayer.AddChild(visualControlsBox);
-		
-		visualsWindow.AddChild(canvasLayer);
-		
-		
-		
-		visualsWindowToggle.Toggled += on => visualsWindow.SetVisible(on);
-		visualsWindow.CloseRequested += () => visualsWindowToggle.SetPressed(false);
-		visualsWindow.SetVisible(false);
-		visualsWindowToggle.SetPressed(false);
+	private void LinkVisualControls() {
+		visualsWindow.ScatterColorChanged += new_color => {
+			_scatterColor = new_color;
+			_shader.SetShaderParameter("water_scatter_color", new_color);
+		};
+		visualsWindow.DeepColorChanged += new_color => {
+			_deepColor = new_color;
+			_shader.SetShaderParameter("air_bubble_color", new_color);
+		};
+		visualsWindow.HeightScatterChanged += new_val => {
+			_heightScatter = new_val;
+			_shader.SetShaderParameter("height_scale", new_val);
+		};
+		visualsWindow.NearScatterChanged += new_val => {
+			_nearScatter = new_val;
+			_shader.SetShaderParameter("k2", new_val);
+		};
+		visualsWindow.GlobalScatterChanged += new_val => {
+			_globalScatter = new_val;
+			_shader.SetShaderParameter("k3", new_val);
+		};
+		visualsWindow.DeepColorStrengthChanged += new_val => {
+			_deepColorStrength = new_val;
+			_shader.SetShaderParameter("k4", new_val);
+		};
 	}
 }

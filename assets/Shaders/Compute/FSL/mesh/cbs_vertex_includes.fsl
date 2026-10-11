@@ -1,7 +1,15 @@
+#include "../fixed_precision.fsl"
+
 struct Vertex {
 	f32 x;
 	f32 y;
 	f32 z;	
+};
+
+struct QVertex {
+	q2_62 x;
+	q2_62 y;
+	q2_62 z;	
 };
 
 buffer["VertexCountBuffer"] {
@@ -10,7 +18,7 @@ buffer["VertexCountBuffer"] {
 };
 
 buffer["VertexInputBuffer"] : godot_vertex {
-	Vertex[] input_vertices;
+	QVertex[] input_vertices;
 };
 
 buffer["VertexOutputBuffer"] : godot_vertex {

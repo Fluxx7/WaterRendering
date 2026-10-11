@@ -6,6 +6,7 @@
   <ItemGroup>
     <Content Include="assets\.DS_Store" />
     <Content Include="assets\Shaders\Compute\FSL\double_precision.fsl" />
+    <Content Include="assets\Shaders\Compute\FSL\fixed_precision.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\indirect_dispatch_helpers.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\bisector_defs.fsl" />
     <Content Include="assets\Shaders\Compute\FSL\mesh\cbs\bisector_util.fsl" />

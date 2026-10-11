@@ -108,7 +108,7 @@ i8 command_select_screenspace(i32 b_depth, f32x3 v0, f32x3 v1, f32x3 v2, f32x3 v
 	if (triangle_size.x < area && b_depth < max_subdiv_depth)
 	{
 		// If the area is really big, put it in high priority.
-		return i8(1);
+		return i8(0x1);
 	}
 	else if (((triangle_size.x >> 1) > area || b_depth > max_subdiv_depth) && b_depth > 0)
 	{

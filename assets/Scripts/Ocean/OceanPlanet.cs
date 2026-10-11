@@ -18,8 +18,7 @@ public partial class OceanPlanet : DynamicMeshInstance3D {
 	[Export] public float PlanetRadius = 500f;
 	[Export] private Window debugWindow;
 	[Export] private Button debugWindowToggle;
-	[Export] private Window visualsWindow;
-	[Export] private Button visualsWindowToggle;
+	[Export] private OceanVisualControlsWindow visualsWindow;
 	private float _prevCameraFov;
 	private bool _simulate = true;
 	private SpinBox layerSelector = new();
@@ -249,8 +248,8 @@ public partial class OceanPlanet : DynamicMeshInstance3D {
 		if (debugWindow != null && debugWindowToggle != null) {
 			InitDebugWindow();
 		}
-		if (visualsWindow != null && visualsWindowToggle != null) {
-			InitVisualsWindow();
+		if (visualsWindow != null) {
+			LinkVisualControls();
 		}
 	}
 
@@ -467,140 +466,8 @@ public partial class OceanPlanet : DynamicMeshInstance3D {
 		newContainer.AddChild(valueSelector);
 		return newContainer;
 	}
-	
-	private HBoxContainer createFloatSelectorAction(string text, float starting_value, 
-													Range.ValueChangedEventHandler action, 
-													float min_val = 0f, float max_val = 100f, float step = 1f, bool allow_greater = false) {
-		var newContainer = new HBoxContainer();
-		var colorLabel = new Label();
-		colorLabel.Text = text;
-		
-		var valueSelector = new SpinBox();
-		valueSelector.MinValue = min_val;
-		valueSelector.MaxValue = max_val;
-		valueSelector.AllowGreater = allow_greater;
-		valueSelector.Step = step;
-		valueSelector.Value = starting_value;
-		valueSelector.ValueChanged += action;
-		
-		newContainer.AddChild(colorLabel);
-		newContainer.AddChild(valueSelector);
-		return newContainer;
-	}
-	
-	private void InitVisualsWindow() {
-		var canvasLayer = new CanvasLayer();
-		var visualControlsBox = new VBoxContainer();
-		var colorParametersBox = new VBoxContainer();
-		var lightingControlsBox = new HBoxContainer();
-		
-		HBoxContainer waterColorControls = CreateColorContainer("Deep Water Color", _waterColor, (new_color) => {
-			DeepWaterColor = new_color;
-		});
-		HBoxContainer scatterColorControls = CreateColorContainer("Scatter Color", _scatterColor, (new_color) => {
-			ScatterColor = new_color;
-		});
-		colorParametersBox.AddChild(waterColorControls);
-		colorParametersBox.AddChild(scatterColorControls);
 
-		var subParametersBox = new HBoxContainer();
+	private void LinkVisualControls() {
 		
-		var shaderParamatersBox = new VBoxContainer();
-		{
-			var shaderParamLabel = new Label();
-			shaderParamLabel.Text = "Water Shader Parameters";
-			shaderParamatersBox.AddChild(shaderParamLabel);
-		}
-		shaderParamatersBox.AddChild(createFloatSelector("Height Scale", _heightScale, 
-			"height_scale", 
-			0f, 50f, 0.01f, true));
-		shaderParamatersBox.AddChild(createFloatSelector("K2", _k2, 
-			"k2", 
-			0f, 20f, 0.01f, true));
-		shaderParamatersBox.AddChild(createFloatSelector("K3", 
-			_k3, "k3", 
-			0f, 20f, 0.01f, true));
-		shaderParamatersBox.AddChild(createFloatSelector("K4", _k4, 
-			"k4", 
-			0f, 20f, 0.01f, true));
-		shaderParamatersBox.AddChild(createFloatSelector("Bubble Density", _bubbleDensity, 
-			"air_bubble_density", 
-			0f, 20f, 0.01f, true));
-
-		var foamParamsTabs = new TabContainer(); 
-		{
-			for (var i = 0; i < FastWaterController.MAX_CASCADES; i++) {
-				var foamParametersBox = new VBoxContainer();
-				foamParametersBox.Name = $"Cascade {i}";
-				{
-					var foamParamLabel = new Label();
-					foamParamLabel.Text = "Foam Parameters";
-					foamParametersBox.AddChild(foamParamLabel);
-				}
-				var index = i;
-				foamParametersBox.AddChild(createFloatSelectorAction("Whitecap", waterController.CascadeFoamParams[i].X,
-					value => {waterController?.SetWhitecap(index, (float) value); }, 0f, 50f, 0.01f, true));
-				foamParametersBox.AddChild(createFloatSelectorAction("Foam Amount", waterController.CascadeFoamParams[i].Y,
-					value => {waterController?.SetFoamAmount(index, (float) value); }, 0f, 50f, 0.01f, true));
-				foamParamsTabs.AddChild(foamParametersBox);
-			}
-		}
-		subParametersBox.AddChild(shaderParamatersBox);
-		subParametersBox.AddChild(foamParamsTabs);
-		
-		colorParametersBox.AddChild(subParametersBox);
-		
-		
-		{
-			var lightingLabel = new Label();
-			lightingLabel.Text = "Lighting Controls";
-			Func<string, string, bool, Button> makeButton = (label, uniform_name, needs_debug_shader) => {
-				var newButton = new Button();
-				newButton.Text = label;
-				newButton.ToggleMode = true;
-				newButton.ButtonPressed = true;
-				newButton.Toggled += (pressed) => {
-					if (currShader == OceanShader.Standard && needs_debug_shader) {
-						currShader = OceanShader.Debug;
-						_shader.SetShader(debugShader);
-						SetShaderParameters();
-					}
-					_shader.SetShaderParameter(uniform_name, pressed);
-					
-				};
-				return newButton;
-			};
-
-			Button diffuseButton = makeButton("Diffuse", "renderDiffuse", true);
-			Button specularButton = makeButton("Specular", "renderSpecular", true);
-			Button reflectionsButton = makeButton("Reflections", "renderReflections", true);
-			Button foamButton = makeButton("Foam", "renderFoam", false);
-			
-			lightingControlsBox.AddChild(lightingLabel);
-			lightingControlsBox.AddChild(diffuseButton);
-			lightingControlsBox.AddChild(specularButton);
-			lightingControlsBox.AddChild(reflectionsButton);
-			lightingControlsBox.AddChild(foamButton);
-		}
-		var mipsButton = new Button();
-		mipsButton.Text = "Use Mipmaps";
-		mipsButton.ToggleMode = true;
-		mipsButton.ButtonPressed = true;
-		mipsButton.Toggled += (pressed) => { waterController?.UseMips(pressed); };
-
-		visualControlsBox.AddChild(colorParametersBox);
-		visualControlsBox.AddChild(lightingControlsBox);
-		visualControlsBox.AddChild(mipsButton);
-		
-		canvasLayer.AddChild(visualControlsBox);
-		
-		visualsWindow.AddChild(canvasLayer);
-		
-		
-		
-		visualsWindowToggle.Toggled += on => visualsWindow.SetVisible(on);
-		visualsWindow.CloseRequested += () => visualsWindowToggle.SetPressed(false);
-		visualsWindow.SetVisible(false);
-		visualsWindowToggle.SetPressed(false);
 	}
 }

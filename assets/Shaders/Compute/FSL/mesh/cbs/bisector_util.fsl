@@ -65,7 +65,7 @@ kernel[INDIRECT_KERNEL_SIZE, 1, 1] loadHalfEdgeMesh(g_id : GlobalInvocationID) {
 	for (u32 _he = 0; _he < he_count; _he++) {
 		i32 vert_index = curr_he.vert;
 		Vertex curr_vert = he_verts[vert_index];
-		internal_vertices[vert_index] = curr_vert;
+		internal_vertices[vert_index] = QVertex(f32_to_q2_62(curr_vert.x),f32_to_q2_62(curr_vert.y),f32_to_q2_62(curr_vert.z));
 		set_vertex_leaf(vert_index, 1);
 		
 		center_vert += vertex_to_f32x3(curr_vert);
@@ -75,7 +75,7 @@ kernel[INDIRECT_KERNEL_SIZE, 1, 1] loadHalfEdgeMesh(g_id : GlobalInvocationID) {
 	}
 	center_vert /= he_count;
 	u32 center_vert_index = cbt_capacity + face_index;
-	internal_vertices[center_vert_index] = f32x3_to_vertex(center_vert);
+	internal_vertices[center_vert_index] = f32x3_to_qvertex(center_vert);
 	vertex_indices[face_index] = center_vert_index;
 	if (g_id.x == 0) {
 		num_face_verts = face_buffer.num_faces;	
@@ -112,4 +112,12 @@ kernel[INDIRECT_KERNEL_SIZE, 1, 1] makeRootBisectors(g_id : GlobalInvocationID) 
 	
 	atomicAdd(available_memory, -1);
 	set_leaf(g_id.x, 1);
+}
+
+kernel[INDIRECT_KERNEL_SIZE, 1, 1] defaultVertex(g_id : GlobalInvocationID) {
+	if (g_id.x >= num_vertices) return;
+	u32 vert_index = vertex_indices[g_id.x];
+	QVertex v_vert = internal_vertices[vert_index];
+
+	vertex_buffer.data[vert_index] = Vertex(q2_62_to_f32(v_vert.x), q2_62_to_f32(v_vert.y), q2_62_to_f32(v_vert.z));
 }
